@@ -1,111 +1,165 @@
-# A Porter Mixin Skeleton
+# Porter Mixin Generator
 
-[![Build Status](https://dev.azure.com/getporter/porter/_apis/build/status/skeletor?branchName=main)](https://dev.azure.com/getporter/porter/_build/latest?definitionId=13&branchName=main)
+[![Build Status](https://github.com/getporter/skeletor/actions/workflows/skeletor.yml/badge.svg)](https://github.com/getporter/skeletor/actions/workflows/skeletor.yml)
+[![GitHub Pages](https://github.com/getporter/skeletor/actions/workflows/pages.yml/badge.svg)](https://getporter.github.io/skeletor/) <!-- Add Pages badge/link -->
 
-This repository contains the skeleton structure of a Porter Mixin. You can clone
-this repository and use it as a starting point to build new mixins. The
-structure of this project matches closely with existing Porter [Mixins](https://porter.sh/mixins).
+This repository contains the `porter-mixin-generator`, a command-line tool designed to streamline the creation of new Porter mixins. It scaffolds a new mixin project based on an enhanced template (sourced from `templates/` in this repository or an external URL/directory), providing a solid foundation with enterprise-grade features built-in.
 
-1. Create a new repository in GitHub [using this repository as a
-   template](https://help.github.com/en/articles/creating-a-repository-from-a-template).
-1. Go 1.17 or higher is required. You can choose to clone into the GOPATH or not according to preference.
-1. Rename the `cmd/skeletor` and `pkg/skeletor` directories to `cmd/YOURMIXIN` and
-   `pkg/YOURMIXIN`.
-1. Find any remaining `skeletor` text in the repository and replace it with `YOURMIXIN`.
-1. In `pkg/YOURMIXIN/version.go` replace `YOURNAME` with the name you would like displayed as the mixin
-   author. This value is displayed as the author of your mixin when `porter mixins list` is run.
-1. Replace the `YOURNAME` instances in `pkg/YOURMIXIN/version_test.go` with the name used above.
-1. Run `mage build test` to try out all the make targets and
-   verify that everything executes without failing. You may need to fix a test string or two.
-1. Run `mage install` to install your mixin into the Porter home directory. If
-   you don't already have Porter installed, [install](https://porter.sh/install) it first.
-1. Now your mixin is installed, you are ready start customizing and iterating on
-   your mixin!
+**[View Documentation Site](https://getporter.github.io/skeletor/)** <!-- Add prominent link -->
 
-## Customize your mixin
+*Note: Currently, the generator requires specifying a template source via `--template-url` (defaults to cloning this repo) or `--template-dir`. Direct embedding of the default template is temporarily disabled due to build environment issues.*
 
-This mixin is ready to wrap an existing command-line tool. The shortest path
-would be to edit `build.go` to add the instructions to download the tool
-and you are all set. It will look and feel like the [gcloud](https://porter.sh/mixins/gcloud)
-or [aws](https://porter.sh/mixins/aws) mixins, both of which are built on top of the exec mixin.
+## Features
 
-Edit the `Build` function in `pkg/skeletor/build.go`.
-Here you can add any Dockerfile lines that you require to download and install
-additional tools, configuration files, etc necessary for your mixin. The Build
-function should write the Dockerfile lines to `m.Out` which is a pipe from the
-mixin back to porter.
-You will also find the basic logic supporting mixin configuration.  Support for `clientVersion` is ready to go, which enables users to specify the version of the underlying tool/utility provided by the mixin, if applicable.
+*   **Rapid Scaffolding:** Quickly generate a new Porter mixin project structure.
+*   **Enterprise-Ready Template:** The generated mixin includes:
+    *   **Observability:** Built-in OpenTelemetry tracing and structured logging, configurable via environment variables.
+    *   **CI/CD Pipeline:** A default GitHub Actions workflow (`.github/workflows/mixin-ci.yml`) for building, testing, linting, and vulnerability scanning.
+    *   **Dockerfile:** A multi-stage Dockerfile for creating optimized and secure mixin images.
+    *   **Security & Contribution Docs:** Standard `SECURITY.md` and `CONTRIBUTING.md` files.
+    *   **Linting:** Default `golangci-lint` configuration (`.golangci.yml`).
+*   **Customizable:** Supports flags for non-interactive generation and specifying template variables.
+*   **Validation:** Performs basic post-generation checks (`go mod tidy`, `go build`, `go test`).
+*   **Filename Templating:** Supports Go template syntax in template filenames and directory names (e.g., `cmd/{{ .MixinName }}/main.go.tmpl`).
+*   **Onboarding Guides:** Generates `docs/DEVELOPER_GUIDE.md` and `docs/OPERATIONS_GUIDE.md` within the new mixin project.
 
-Search for `TODO` in the code and follow the instructions to customize the mixin.
+## Installation
 
-Here is an example from the aws mixin, where it downloads the latest version of
-of the aws binary and installs it:
+You can install the generator using `go install`:
 
-https://github.com/getporter/aws-mixin/blob/001c19bfe06d248143353a55f07a42c913579481/pkg/aws/build.go#L7
+```bash
+go install github.com/getporter/skeletor/cmd/porter-mixin-generator@latest
+```
 
-This is enough to have a working mixin. Run `mage build install` and then test
-it out with a bundle.
+Alternatively, build from source:
 
-That will get you started but make sure to read the mixin developer
-documentation for how to create a full featured mixin:
+```bash
+git clone https://github.com/getporter/skeletor.git
+cd skeletor
+go run mage.go build install
+# The binary will be in ./bin/porter-mixin-generator
+```
 
-* [Mixin Architecture](https://porter.sh/mixin-dev-guide/architecture/)
-* [Mixin Commands](https://porter.sh/mixin-dev-guide/commands/)
-* [Distributing Mixins](https://porter.sh/mixin-dev-guide/distribution/)
+**Using Docker:**
 
-Once ready for primetime, don't forget to revisit this `README.md` and update/replace it with details on your mixin.
+Pull the latest image from GitHub Container Registry:
+```bash
+docker pull ghcr.io/getporter/porter-mixin-generator:latest
+```
 
-## Project Structure
+Run the generator using Docker:
+```bash
+# Example: Create mixin in the current directory, mounting it as /work
+docker run --rm -v "$(pwd):/work" -w /work \
+  ghcr.io/getporter/porter-mixin-generator:latest \
+  create --name my-mixin --author "Your Name" --module "github.com/your-org/my-mixin" --output ./my-mixin
+```
 
-In the `cmd/skeletor` directory, you will find a cli built using [spf13/cobra](https://github.com/spf13/cobra). The CLI contains a go file for each basic capability a Mixin should implement:
 
-* build
-* schema
-* version
-* install
-* upgrade
-* invoke
-* uninstall
+## Usage
 
-Each of these command implementations have a corresponding Mixin implementation in the `pkg/skeletor` directory. Each of the commands above is wired into an empty implementation in `pkg/skeletor` that needs to be completed. In order to build a new Mixin, you need to complete these implementations with the relevant technology. For example, to build a [Cloud Formation](https://aws.amazon.com/cloudformation/) mixin, you might implement the methods in `pkg/skeletor` using the [AWS Go SDK](https://docs.aws.amazon.com/sdk-for-go/api/service/cloudformation/).
+To create a new mixin named `my-mixin`:
 
-## Provided capabilities
+```bash
+porter-mixin-generator create --name my-mixin --author "Your Name" --module "github.com/your-org/my-mixin"
+```
 
-This skeleton mixin project brings some free capabilities:
+This will create a new directory `./my-mixin` containing the scaffolded project.
 
-### File System Access and Context
+**Flags:**
 
-Porter provides the [portercontext](https://porter.sh/src/pkg/portercontext) package that has helpful mechanisms for accessing the File System using [spf13/afero](https://github.com/spf13/afero). This makes it easy to provide mock File System implementations during testing. The portercontext package also provides a mechanism to encapsulate stdin, stdout and stderr so that they can easily be passed from `cmd/skeletor` code to implementing `pkg/skeletor` code.
+*   `--name`: (Required) Name of the new mixin (lowercase).
+*   `--author`: (Required) Author name for the mixin.
+*   `--module`: Go module path (default: `github.com/getporter/<name>`).
+*   `--output`: Output directory (default: `./<name>`).
+*   `--non-interactive`: Run without prompts, using defaults or provided flags.
+*   `--template-url`: URL to a git repository containing a custom template (overrides default).
+*   `--template-dir`: Local directory containing the template (e.g., `--template-dir templates` to use the one in this repo).
+*   `--var`: Set template variables in `KEY=VALUE` format (can be used multiple times).
+*   `--compliance-level`: Desired compliance level ("basic", "slsa-l1", "slsa-l3"; default: "basic"). Affects generated files like Dockerfile, .goreleaser.yml, .golangci.yml, SECURITY.md.
+*   `--dry-run`: Simulate generation without writing files or running hooks.
 
-### Template and Static Asset Handling
+## Template Variables
 
-The project go:embed for dealing with static files, such as templates or other content that is best modeled outside of a Go file. You can see an example of this in `pkg/skeletor/schema.go`.
+The following variables are used by the default template (`templates/template.json`) and can be provided during generation (interactively or via `--var` flag):
 
-### Basic Schema
+*   `MixinName` (string, required): Name of the mixin (lowercase).
+*   `AuthorName` (string, required): Author name.
+*   `ModulePath` (string): Go module path (defaults based on `MixinName`).
+*   `Description` (string): Short description of the mixin (defaults based on `MixinName`).
+*   `License` (string): License for the mixin (choices: "Apache-2.0", "MIT", "GPL-3.0"; default: "Apache-2.0").
+*   `InitGit` (bool): Initialize a git repository in the output directory? (default: true).
+*   `MixinFeedRepoURL` (string, optional): Git URL for the mixin feed repository. If provided, `mage Publish` will attempt to update the feed.
+*   `MixinFeedBranch` (string): Branch in the mixin feed repository (default: "main").
+*   `AuthorEmail` (string, optional): Author's email for security contact (used in `.well-known/security.txt`).
+# Note: ComplianceLevel is now a direct flag (--compliance-level), not a template variable.
 
-The project provides an implementation of the `skeletor schema` command that is mostly functional. To fully implement this for your mixin, you simply need to provide a valid JSON schema. For reference, consult `pkg/skeletor/schema/schema.json`.
+## Generated Project Structure
 
-### Basic Tests
+The generated mixin project follows the standard Porter mixin structure:
 
-The project provides some very basic test skeletons that you can use as a starting point for building tests for your mixin.
+*   `cmd/YOURMIXIN/`: CLI implementation using Cobra. Sourced from `templates/cmd/mixin/*.go.tmpl`.
+*   `pkg/YOURMIXIN/`: Core mixin logic (implement build, install, invoke, etc.). Sourced from `templates/pkg/mixin/`. *(Note: `pkg/` directory structure might need creation/templating if not already present)*
+*   `ci/main.go`: Dagger pipeline definition for CI/CD tasks (test, build, release). Sourced from `templates/ci/main.go.tmpl`.
+*   `.github/workflows/mixin-ci.yml`: GitHub Actions workflow that executes the Dagger pipeline. Sourced from `templates/.github/workflows/mixin-ci.yml.tmpl`.
+*   `magefile.go`: Build automation using Mage (can be invoked by Dagger). Sourced from `magefile.go` at the root.
+*   `.goreleaser.yml`: Configuration for GoReleaser (used by Dagger release task).
+*   `tools.go`: Go tool dependencies.
+*   `go.mod`, `go.sum`: Go module files.
+*   `Dockerfile`: For building the mixin container image (can be used by GoReleaser). Sourced from `templates/Dockerfile.tmpl`.
+*   `.golangci.yml`: Default or strict linter configuration (conditionally generated). Sourced from `templates/.golangci.yml.tmpl` or `templates/.golangci-strict.yml.tmpl`.
+*   `.well-known/security.txt`: Standard security contact file. Sourced from `templates/.well-known/security.txt.tmpl`.
+*   `docs/DEVELOPER_GUIDE.md`: Guide for developers extending the mixin. Sourced from `templates/docs/DEVELOPER_GUIDE.md.tmpl`.
+*   `docs/OPERATIONS_GUIDE.md`: Guide for users operating the mixin. Sourced from `templates/docs/OPERATIONS_GUIDE.md.tmpl`.
+*   `README.md`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`: Documentation and policy files. Sourced from templates.
 
-### Magefile
+## Development (Porter Mixin Generator)
 
-The project also includes a [Magefile] that is used to build, test, and publish the mixin.
+This section describes how to develop the generator tool itself.
 
-### Publish
+### Prerequisites
 
-You must set the `GITHUB_TOKEN` environment variable with your personal access token in order to use the default publish target.
+*   Go 1.23+
+*   [Mage](https://magefile.org/)
+*   [Dagger CLI](https://docs.dagger.io/install)
 
-Publish uploads cross-compiled binaries of your mixin to a GitHub release.
-You must set the `PORTER_RELEASE_REPOSITORY` environment variable to your GitHub repository name, e.g. github.com/YOURNAME/YOURREPO.
-There is a placeholder in the Publish magefile target where you can set that value.
+### Building & Testing (using Dagger)
 
-Create a tag, for example `git tag v0.1.0`, and push it to your repository.
-Run `mage XBuildAll Publish` to build your mixin and upload the binaries to the github release for that tag.
-If the commit is not tagged, the release is named "canary".
+The CI/CD pipeline is defined using the Dagger Go SDK in the `./ci` directory.
 
-If you want to generate a mixin feed file (atom.xml), edit the Publish magefile target, uncomment out the rest of the function, and set the `PORTER_PACKAGES_REMOTE` environment variable to a repository where the atom.xml file should be committed.
-For example, Porter uses github.com/getporter/packages for publishing our mixin feed.
+To run tests and linters locally:
 
-[Magefile]: https://magefile.org
+```bash
+go run ./ci -task ci
+```
+
+### Releasing (using Dagger & GoReleaser)
+
+Releases are handled automatically by the GitHub Actions workflow (`.github/workflows/skeletor.yml`) on tag pushes. The workflow uses Dagger to execute GoReleaser. This process includes:
+*   Cross-compiling binaries for Linux, macOS, and Windows (amd64/arm64).
+*   Generating SLSA L3 provenance attestations.
+*   Generating SBOMs (CycloneDX and SPDX formats) for binaries and Docker images.
+*   Calculating SHA256 checksums.
+*   Signing checksums and archives using Cosign keyless signing (via Sigstore).
+*   Building and pushing multi-arch Docker images for the generator tool to GHCR.
+*   Creating a GitHub release with all artifacts, SBOMs, signatures, and attestations attached.
+
+To test the release process locally (requires Docker):
+
+```bash
+# Simulate a tag
+export GITHUB_REF_NAME=v0.1.0-test
+export GITHUB_REF_TYPE=tag
+
+# Run the release task (requires a GITHUB_TOKEN with appropriate permissions)
+# Note: This will attempt to create a real release if run outside CI context
+GITHUB_TOKEN="YOUR_GITHUB_TOKEN" go run ./ci -task release
+```
+
+## Contributing
+
+Contributions to the Porter Mixin Generator are welcome! Please see `CONTRIBUTING.md` in the *generated* mixin template for guidelines applicable to mixin development. For contributing to the generator itself, please open an issue or pull request on this repository.
+
+## License
+
+Apache 2.0 License

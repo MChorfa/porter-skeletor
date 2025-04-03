@@ -1,0 +1,183 @@
+# {{ .MixinNameCap }} Mixin for Porter
+
+[![Build Status](https://github.com/{{ .AuthorName }}/{{ .MixinName }}/workflows/build/badge.svg)](https://github.com/{{ .AuthorName }}/{{ .MixinName }}/actions)
+[![GitHub Pages](https://github.com/{{ .AuthorName }}/{{ .MixinName }}/actions/workflows/pages.yml/badge.svg)](https://{{ .AuthorName | lower }}.github.io/{{ .MixinName }}/) <!-- Add Pages badge/link -->
+
+{{ .Description }}
+
+**[View Documentation Site](https://{{ .AuthorName | lower }}.github.io/{{ .MixinName }}/)** <!-- Add prominent link -->
+
+## Installation
+
+The mixin can be installed using the Porter CLI:
+
+```bash
+porter mixin install {{ .MixinName }} --version v0.1.0 # Replace v0.1.0 with desired version
+```
+
+## Getting Started (After Installation)
+
+1.  **Verify Installation:**
+    ```bash
+    porter mixins list
+    ```
+    You should see `{{ .MixinName }}` listed.
+
+2.  **Basic Usage Example:**
+    Create a `porter.yaml` file in a new directory:
+    ```yaml
+    # porter.yaml
+    name: {{ .MixinName }}-example
+    version: 0.1.0
+    mixins:
+      - {{ .MixinName }}
+
+    install:
+      - {{ .MixinName }}:
+          description: "Install action using {{ .MixinName }}"
+          # Add required inputs for your mixin's install action here
+          # Example:
+          # config:
+          #   setting1: value1
+
+    # Define other actions (upgrade, invoke, uninstall) as needed
+    # invoke:
+    #   ...
+    # uninstall:
+    #   ...
+    ```
+
+3.  **Run an Action:**
+    ```bash
+    porter install
+    ```
+
+## Usage
+
+```yaml
+mixins:
+- {{ .MixinName }}
+
+install:
+- {{ .MixinName }}:
+    name: example
+    description: "Example {{ .MixinName }} action"
+```
+
+## Development
+
+### Prerequisites
+
+- Go 1.23+
+- [Mage](https://magefile.org/)
+- Docker (if running tests/builds via the Dagger pipeline)
+- [Dagger CLI](https://docs.dagger.io/install) (if running pipeline locally)
+
+### Tool Dependencies
+
+This project uses a `tools.go` file to manage Go-based tool dependencies (linters, code generators, etc.) required for development and CI. To install these tools:
+
+```bash
+# Ensure you are in the mixin's root directory
+go generate ./tools.go
+```
+
+### Building
+
+```bash
+mage build
+```
+
+### Testing
+
+Run unit tests:
+```bash
+mage testunit
+```
+
+Run integration tests (requires setup, see `pkg/mixin_integration_test.go`):
+```bash
+mage testintegration
+# Or: go test -tags integration ./pkg/...
+```
+
+Run all tests (unit and integration) via Mage:
+```bash
+mage test
+```
+
+Alternatively, run the full CI pipeline (including tests, linting, and a sample build) using Dagger:
+```bash
+# Ensure Docker is running
+go run ./ci -task ci
+```
+
+## Releasing
+
+This mixin template includes a `.goreleaser.yml.tmpl` file and a Dagger pipeline (`ci/main.go.tmpl`) configured for automated releases using GitHub Actions (`mixin-ci.yml.tmpl`). When you push a tag (e.g., `v0.2.0`), the `release` job will:
+*   Cross-compile binaries for Linux, macOS, and Windows (amd64/arm64).
+*   Generate SLSA L3 provenance attestations.
+*   Generate SBOMs (CycloneDX and SPDX formats).
+*   Calculate SHA256 checksums.
+*   Sign checksums and archives using Cosign keyless signing (via Sigstore).
+*   Create a GitHub release with all artifacts, SBOMs, signatures, and attestations attached.
+*   Optionally publish Docker images (if configured in `.goreleaser.yml`).
+*   Optionally update the mixin feed (if configured via `MixinFeedRepoURL` or `PORTER_PACKAGES_REMOTE`).
+
+Ensure the `.github/workflows/mixin-ci.yml` in your repository has the necessary permissions (`contents: write`, `id-token: write`, `packages: write` if publishing images).
+
+## Observability
+
+This mixin utilizes Porter's built-in runtime for logging and tracing, configurable via environment variables:
+
+**Logging:**
+
+*   `PORTER_LOG_LEVEL`: Set the logging level (e.g., `debug`, `info`, `warn`, `error`). Defaults to `info`.
+*   `PORTER_LOG_FORMAT`: Set the log format (`text` or `json`). Defaults to `text`.
+
+**Tracing (OpenTelemetry):**
+
+*   `OTEL_EXPORTER_OTLP_ENDPOINT`: Set the OTLP endpoint for exporting traces (e.g., `http://localhost:4317` for gRPC, `http://localhost:4318` for HTTP).
+*   `OTEL_EXPORTER_OTLP_PROTOCOL`: Specify the OTLP protocol (`grpc` or `http/protobuf`). Defaults to `grpc`.
+*   `OTEL_EXPORTER_OTLP_HEADERS`: Set custom headers for the OTLP exporter (e.g., `Authorization=Bearer <token>`).
+*   `OTEL_SERVICE_NAME`: Defines the service name for traces (defaults to `porter`).
+*   `OTEL_RESOURCE_ATTRIBUTES`: Add custom resource attributes (e.g., `deployment.environment=production`).
+
+Refer to the [Porter Operator Guide](https://porter.sh/operator-guide/configuration/#configure-opentelemetry) and the [OpenTelemetry Specification](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/) for more details on available configuration options.
+
+## Mixin Feed Publishing (Optional)
+
+This mixin can be published to a Porter mixin feed (an Atom XML file typically hosted in a Git repository).
+
+**Configuration:**
+
+If you provided a "Mixin Feed Repo URL" (e.g., `git@github.com:YOUR-ORG/packages.git`) during generation, the `mage Publish` target will attempt to:
+1. Clone the specified repository.
+2. Update or create the `atom.xml` feed file with the latest release information for this mixin.
+3. Commit and push the changes to the specified branch (default: `main`, configurable via `MixinFeedBranch` variable during generation or `PORTER_PACKAGES_BRANCH` env var).
+
+**Manual Setup:**
+
+If you didn't provide the feed repository URL during generation, you can configure it manually:
+1. Set the `PORTER_PACKAGES_REMOTE` environment variable to the Git URL of your feed repository.
+2. Optionally set `PORTER_PACKAGES_BRANCH` to the target branch (defaults to `main`).
+3. Ensure your environment has the necessary Git credentials (e.g., SSH keys) to push to the feed repository.
+4. Run `mage Publish`.
+
+Refer to the [Porter Mixin Feed documentation](https://porter.sh/mixin-dev-guide/distribution/#publish-a-mixin-feed) for more details.
+
+## License
+
+{{ .License }}
+
+## Uninstalling the Mixin
+
+To remove the mixin from your Porter installation:
+
+```bash
+porter mixin uninstall {{ .MixinName }}
+```
+
+## Cleaning Up Resources (If Applicable)
+
+*TODO: Add instructions here if your mixin provisions external resources that need manual cleanup after running `porter uninstall` on a bundle.*
