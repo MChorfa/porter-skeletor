@@ -1,4 +1,4 @@
-kcpackage main
+package main
 
 import (
 	"bufio"
@@ -222,249 +222,305 @@ var funcMap = template.FuncMap{
 	"now":   time.Now, // Add now function
 }
 
+// --- Refactored createMixin and Helper Functions ---
+
 // createMixin generates the mixin files from the template source or simulates if dryRun is true
-func createMixin(data map[string]interface{}, tmplFS fs.FS, templateRoot, outputDir string, config *TemplateConfig, dryRun bool) error { // Add dryRun parameter
+func createMixin(data map[string]interface{}, tmplFS fs.FS, templateRoot, outputDir string, config *TemplateConfig, dryRun bool) error {
 	if dryRun {
 		fmt.Println("[Dry Run] Simulating file generation...")
 	} else {
-		// Only create the output directory if not a dry run
-		if err := os.MkdirAll(outputDir, 0750); err != nil { // Changed permission to 0750
-			return fmt.Errorf("failed to create output directory: %w", err)
+		// Use 0750 permission as recommended by gosec G301
+		if err := os.MkdirAll(outputDir, 0750); err != nil {
+			return fmt.Errorf("failed to create output directory %s: %w", outputDir, err)
 		}
 		fmt.Println("Generating mixin files...")
 	}
 
-	fmt.Println("Generating mixin files...")
-	err := fs.WalkDir(tmplFS, templateRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return fmt.Errorf("error walking template source at %s: %w", path, err)
+	err := fs.WalkDir(tmplFS, templateRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("error walking template source at %s: %w", path, walkErr)
 		}
 
-		// path is relative to the tmplFS root, potentially including templateRoot (e.g., "template/README.md.tmpl")
-		// We need the path relative to the *template structure's root* for destination calculation.
-		destRelPath := path
-		if templateRoot != "." && strings.HasPrefix(path, templateRoot+"/") {
-			destRelPath = strings.TrimPrefix(path, templateRoot+"/")
-		} else if path == templateRoot {
-			// Skip processing the root directory itself if templateRoot isn't "."
+		// Calculate destination path and check if the file/dir should be skipped
+		destRelPath, skip := calculateDestPath(path, templateRoot, config.Ignore)
+		if skip {
+			if d.IsDir() {
+				return fs.SkipDir // Skip ignored directories entirely
+			}
+			return nil // Skip ignored files
+		}
+
+		// Determine the actual source path and file info, handling conditional logic
+		sourcePath, info, skip, err := determineSourcePath(tmplFS, path, destRelPath, templateRoot, config.ConditionalPaths, data)
+		if err != nil {
+			return err // Propagate errors from conditional path processing
+		}
+		if skip {
+			if info != nil && info.IsDir() { // Need info to check if it was a dir
+				return fs.SkipDir
+			}
 			return nil
 		}
 
-		// Skip template.json itself by checking the original path within the FS
-		if path == filepath.Join(templateRoot, "template.json") {
+		// Process the final destination path using template data
+		finalDestPath, err := processDestPath(destRelPath, outputDir, data)
+		if err != nil {
+			return err
+		}
+		if finalDestPath == "" { // Skip if templating resulted in empty path
+			if info.IsDir() {
+				return fs.SkipDir
+			}
 			return nil
 		}
 
-		// Use original path for checking ignores relative to FS root
-		if path == "." || strings.Contains(path, ".git") {
-			return nil // Skip FS root or .git dirs
-		}
-
-		// Skip ignored files
-		// Use original path for matching ignore patterns relative to FS root
-		for _, pattern := range config.Ignore {
-			matched, matchErr := filepath.Match(pattern, path) // Use path here
-			if matchErr != nil {
-				return fmt.Errorf("error matching ignore pattern %s: %w", pattern, matchErr)
-			}
-			if matched {
-				if d.IsDir() {
-					return fs.SkipDir
-				}
-				return nil
-			}
-		}
-
-		// Determine the source path within the FS, considering conditionals
-		// Use original path for source reading and conditional logic relative to FS root
-		sourcePath := path    // Use path directly for source reading initially
-		info, err := d.Info() // Get FileInfo from DirEntry
-		if err != nil {
-			return fmt.Errorf("could not get FileInfo for %s: %w", path, err)
-		}
-
-		// Conditional paths are defined relative to the template structure's root, so use destRelPath for lookup
-		if sourceTemplatePathTmplStr, exists := config.ConditionalPaths[destRelPath]; exists {
-			sourceTemplatePathTmpl, err := template.New("sourcePathCondition").Parse(sourceTemplatePathTmplStr)
-			if err != nil {
-				// Use destRelPath in error message as that's the key used
-				return fmt.Errorf("failed to parse conditional source path template for destination %s: %w", destRelPath, err)
-			}
-
-			var sourcePathBuf bytes.Buffer
-			if err := sourceTemplatePathTmpl.Execute(&sourcePathBuf, data); err != nil {
-				// Use destRelPath in error message
-				return fmt.Errorf("failed to execute conditional source path template for destination %s: %w", destRelPath, err)
-			}
-			evaluatedSourceRelPath := sourcePathBuf.String() // This is relative to template structure root
-
-			if evaluatedSourceRelPath == "" {
-				// Use destRelPath in message
-				fmt.Printf("  Skipping destination %s (conditional source path evaluated to empty)\n", destRelPath)
-				if info.IsDir() {
-					return fs.SkipDir // Skip the original directory path
-				}
-				return nil
-			}
-
-			// Construct the actual source path within the FS by joining with templateRoot if needed
-			// sourceRelPath = evaluatedSourceRelPath // Keep this relative for potential logging - REMOVED as unused
-			if templateRoot != "." {
-				sourcePath = filepath.Join(templateRoot, evaluatedSourceRelPath)
-			} else {
-				sourcePath = evaluatedSourceRelPath
-			}
-
-			// Stat the actual source path in the FS
-			newInfo, statErr := fs.Stat(tmplFS, sourcePath)
-			if statErr != nil {
-				// Use destRelPath and sourcePath in message
-				fmt.Printf("  Warning: Conditional source path %s (evaluated from %s) for destination %s does not exist in FS. Skipping.\n", sourcePath, evaluatedSourceRelPath, destRelPath)
-				if info.IsDir() {
-					return fs.SkipDir // Skip the original directory path
-				}
-				return nil
-			}
-			info = newInfo // Use the FileInfo of the actual source file/dir
-		}
-
-		// Process destination path using the *stripped* destRelPath template logic
-		destPathTemplate, err := template.New("destPath").Parse(destRelPath)
-		if err != nil {
-			return fmt.Errorf("failed to parse destination path template for %s: %w", destRelPath, err)
-		}
-		var destPathBuf bytes.Buffer
-		if err := destPathTemplate.Execute(&destPathBuf, data); err != nil {
-			return fmt.Errorf("failed to execute destination path template for %s: %w", destRelPath, err)
-		}
-		processedDestRelPath := strings.TrimSuffix(destPathBuf.String(), ".tmpl")
-		destPath := filepath.Join(outputDir, processedDestRelPath)
-
-		// Handle directories
-		if info.IsDir() {
-			// Ensure we don't try to create the output directory itself if destRelPath is "."
-			if processedDestRelPath == "." {
-				return nil
-			}
-			if dryRun {
-				fmt.Printf("[Dry Run] Would create directory: %s\n", destPath)
-				return nil // Don't actually create in dry run
-			}
-			// Use 0750 for directories as recommended by gosec G301
-			return os.MkdirAll(destPath, 0750)
-		}
-
-		// Handle files: Read content from sourcePath within the FS
-		content, err := fs.ReadFile(tmplFS, sourcePath)
-		// Use sourcePath (which might have been updated by conditional logic)
-		if err != nil {
-			return fmt.Errorf("failed to read source file %s from FS: %w", sourcePath, err)
-		}
-
-		// Process file content as a template using the *destination* relative path as the template name for consistency
-		// Add the custom function map here
-		tmpl, err := template.New(destRelPath).Funcs(funcMap).Parse(string(content))
-		processedContent := string(content) // Default to raw content if not a template
-
-		// Only execute if it's a .tmpl file or explicitly marked for processing
-		// Using TrimSuffix check on processedDestRelPath vs destRelPath to see if .tmpl was removed
-		if processedDestRelPath != destRelPath || strings.HasSuffix(destRelPath, ".tmpl") { // Heuristic: if paths differ after trim, it was likely a template
-			if err == nil { // Check if template parsing succeeded
-				var templatedContentBuf bytes.Buffer
-				if err := tmpl.Execute(&templatedContentBuf, data); err != nil {
-					// Use destRelPath and sourcePath in error
-					return fmt.Errorf("failed to execute content template for %s (source %s): %w", destRelPath, sourcePath, err)
-				}
-				processedContent = templatedContentBuf.String()
-			} else {
-				// Log if parsing failed but maybe shouldn't halt? Or maybe it should?
-				// Let's halt for now. If a file looks like a template but fails parsing, it's an issue.
-				return fmt.Errorf("failed to parse content template for %s (source %s): %w", destRelPath, sourcePath, err)
-			}
-		} // else: treat as plain file, use raw content
-
-		// Perform Go-specific string replacements *after* template execution
-		mixinNameRaw, _ := data["MixinName"].(string) // Use raw mixin name from data
-		// sanitizedName, _ := data["SanitizedMixinName"].(string) // Remove unused variable
-		authorName, _ := data["AuthorName"].(string)
-		// Use destRelPath for checking file type/location relative to template structure root
-		placeholderPkgDir := filepath.Join("pkg", "mixin") // Assuming template structure root contains pkg/mixin
-		placeholderCmdDir := filepath.Join("cmd", "mixin") // Assuming template structure root contains cmd/mixin
-
-		// Check against the *destination* relative path for Go file replacements
-		if strings.HasSuffix(destRelPath, ".go") {
-			// Ensure package declaration is always 'package mixin' for files in the mixin directories
-			if strings.HasPrefix(destRelPath, placeholderPkgDir) || strings.HasPrefix(destRelPath, placeholderCmdDir) {
-				// Replace if it's something else, ensure it becomes 'package mixin'
-				// This handles cases where the template might have a different placeholder
-				if !strings.Contains(processedContent, "package mixin") {
-					// Basic replacement assuming "package othername" format
-					// A more robust regex might be needed if templates vary wildly
-					packageLineRegex := regexp.MustCompile(`^package\s+\w+`) // Use regexp here
-					processedContent = packageLineRegex.ReplaceAllString(processedContent, "package mixin")
-				}
-				// If it already contains "package mixin", do nothing.
-			}
-
-			// Replace ONLY the specific placeholder string for author name
-			processedContent = strings.ReplaceAll(processedContent, `"YOURNAME"`, `"`+authorName+`"`)
-
-			// Replace ONLY the specific placeholder string for mixin name in comments/strings
-			// Use mixinNameRaw here
-			processedContent = strings.ReplaceAll(processedContent, `Use:  "mixin"`, `Use:  "`+mixinNameRaw+`"`)
-			processedContent = strings.ReplaceAll(processedContent, `StartRootSpan(ctx, "mixin")`, `StartRootSpan(ctx, "`+mixinNameRaw+`")`)
-		}
-
-		// Write file or simulate if dry run
+		// Handle directory or file processing
 		if dryRun {
-			// Use sourcePath in log message
-			fmt.Printf("[Dry Run] Would write file: %s (from source %s)\n", destPath, sourcePath)
-			// Optionally print content diff or summary here if needed
-			return nil // Don't actually write in dry run
+			if info.IsDir() {
+				// Print for all directories except the root being walked (which is skipped earlier)
+				fmt.Printf("[Dry Run] Would create directory: %s\n", finalDestPath)
+			} else {
+				fmt.Printf("[Dry Run] Would write file: %s (from source %s)\n", finalDestPath, sourcePath)
+			}
+			return nil // Skip actual processing in dry run mode
 		}
-		// Use 0600 for files as recommended by gosec G306 (owner rw only)
-		return os.WriteFile(destPath, []byte(processedContent), 0600)
+
+		// Actual processing if not dry run
+		if info.IsDir() {
+			return processDirectory(finalDestPath, info)
+		} else {
+			return processTemplateFile(tmplFS, sourcePath, finalDestPath, info, data)
+		}
 	})
 
 	if err != nil {
 		return err
 	}
 
-	// --- Post Generation Validation ---
-	if dryRun {
-		fmt.Println("\n[Dry Run] Skipping post-generation validation.")
-		fmt.Println("[Dry Run] Would run the following validation commands:")
-		fmt.Println("  - go mod tidy")
-		fmt.Println("  - go build ./...")
-		fmt.Println("  - go test ./...")
-		fmt.Println("\n[Dry Run] Simulation complete.") // Final dry run message
-		return nil
+	// Run post-generation validation if not a dry run
+	if !dryRun {
+		return runPostGenerationValidation(outputDir)
 	}
 
-	fmt.Println("\nRunning post-generation validation...")
-	if err := runCommandInDir(outputDir, "go", "mod", "tidy"); err != nil {
-		fmt.Printf("Warning: 'go mod tidy' failed: %v\n", err)
-	} else {
-		fmt.Println("  - go mod tidy: OK")
-	}
-	if err := runCommandInDir(outputDir, "go", "build", "./..."); err != nil {
-		fmt.Printf("Warning: 'go build ./...' failed: %v\n", err)
-	} else {
-		fmt.Println("  - go build ./...: OK")
-	}
-	if err := runCommandInDir(outputDir, "go", "test", "./..."); err != nil {
-		fmt.Printf("Warning: 'go test ./...' failed: %v\n", err)
-	} else {
-		fmt.Println("  - go test ./...: OK")
-	}
-
-	fmt.Println("\nValidation complete.")
-	// Next steps message moved to RunE for non-dry run case
-
+	fmt.Println("\n[Dry Run] Simulation complete.")
 	return nil
 }
 
-// --- Other helper functions ---
+// calculateDestPath determines the relative destination path and if it should be skipped.
+func calculateDestPath(originalPath, templateRoot string, ignorePatterns []string) (destRelPath string, skip bool) {
+	// Calculate path relative to the template structure's root
+	destRelPath = originalPath
+	if templateRoot != "." && strings.HasPrefix(originalPath, templateRoot+"/") {
+		destRelPath = strings.TrimPrefix(originalPath, templateRoot+"/")
+	} else if originalPath == templateRoot || originalPath == "." {
+		// Skip the root directory itself (".") or the specified templateRoot
+		return "", true
+	} else {
+		// Path doesn't match expected structure, treat as relative path directly
+		destRelPath = originalPath
+	}
+
+	// Skip template.json (check against original path within FS)
+	if originalPath == filepath.Join(templateRoot, "template.json") {
+		return "", true
+	}
+
+	// Skip .git directory
+	if strings.Contains(originalPath, ".git") {
+		return "", true
+	}
+
+	// Skip ignored files/dirs based on patterns (using original path relative to FS root)
+	for _, pattern := range ignorePatterns {
+		matched, _ := filepath.Match(pattern, originalPath) // Ignore match error for simplicity here
+		if matched {
+			return "", true
+		}
+	}
+
+	return destRelPath, false
+}
+
+// determineSourcePath finds the correct source path and info, handling conditional logic.
+func determineSourcePath(tmplFS fs.FS, originalPath, destRelPath, templateRoot string, conditionalPaths map[string]string, data map[string]interface{}) (sourcePath string, fileInfo fs.FileInfo, skip bool, err error) {
+	sourcePath = originalPath // Default source is the original path walked
+
+	// Get initial FileInfo using the original path
+	var initialFileInfo fs.FileInfo
+	initialFileInfo, err = fs.Stat(tmplFS, sourcePath)
+	if err != nil {
+		err = fmt.Errorf("could not get FileInfo for %s: %w", sourcePath, err)
+		return
+	}
+	fileInfo = initialFileInfo // Use this unless overridden by conditional logic
+
+	// Check conditional paths (key is relative to template structure root, which matches destRelPath)
+	if sourceTemplatePathTmplStr, exists := conditionalPaths[destRelPath]; exists {
+		sourceTemplatePathTmpl, parseErr := template.New("sourcePathCondition").Parse(sourceTemplatePathTmplStr)
+		if parseErr != nil {
+			err = fmt.Errorf("failed to parse conditional source path template for destination %s: %w", destRelPath, parseErr)
+			return
+		}
+
+		var sourcePathBuf bytes.Buffer
+		if execErr := sourceTemplatePathTmpl.Execute(&sourcePathBuf, data); execErr != nil {
+			err = fmt.Errorf("failed to execute conditional source path template for destination %s: %w", destRelPath, execErr)
+			return
+		}
+		evaluatedSourceRelPath := sourcePathBuf.String()
+
+		if evaluatedSourceRelPath == "" {
+			fmt.Printf("  Skipping destination %s (conditional source path evaluated to empty)\n", destRelPath)
+			skip = true
+			return // Return original fileInfo in case caller needs to check IsDir for fs.SkipDir
+		}
+
+		// Construct the actual source path within the FS
+		if templateRoot != "." {
+			sourcePath = filepath.Join(templateRoot, evaluatedSourceRelPath)
+		} else {
+			// When templateRoot is ".", evaluatedSourceRelPath is relative to the embedded root,
+			// but needs to be prefixed with "template/" to match the actual embedded path.
+			// This assumes conditional paths always resolve to something inside "template/".
+			sourcePath = filepath.Join("template", evaluatedSourceRelPath)
+		}
+
+		// Stat the *actual* source path
+		newInfo, statErr := fs.Stat(tmplFS, sourcePath)
+		if statErr != nil {
+			fmt.Printf("  Warning: Conditional source path %s (evaluated from %s) for destination %s does not exist in FS. Skipping.\n", sourcePath, evaluatedSourceRelPath, destRelPath)
+			skip = true
+			err = nil // Treat as skip, not error
+			return    // Return initialFileInfo
+		}
+		fileInfo = newInfo // Update fileInfo ONLY if conditional path is valid
+	}
+	// If no conditional path matched or was processed, fileInfo remains initialFileInfo
+	return
+}
+
+// processDestPath processes the relative destination path with template data.
+func processDestPath(destRelPath, outputDir string, data map[string]interface{}) (string, error) {
+	destPathTemplate, err := template.New("destPath").Parse(destRelPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse destination path template for %s: %w", destRelPath, err)
+	}
+	var destPathBuf bytes.Buffer
+	if err := destPathTemplate.Execute(&destPathBuf, data); err != nil {
+		return "", fmt.Errorf("failed to execute destination path template for %s: %w", destRelPath, err)
+	}
+	processedDestRelPath := strings.TrimSuffix(destPathBuf.String(), ".tmpl")
+
+	if processedDestRelPath == "" {
+		fmt.Printf("  Skipping empty destination path derived from %s\n", destRelPath)
+		return "", nil // Return empty string to indicate skip
+	}
+
+	return filepath.Join(outputDir, processedDestRelPath), nil
+}
+
+// processDirectory handles directory creation during mixin generation.
+// Removed dryRun parameter
+func processDirectory(destPath string, info fs.FileInfo) error {
+	// Use 0750 for directories as recommended by gosec G301
+	if err := os.MkdirAll(destPath, 0750); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", destPath, err)
+	}
+	return nil
+}
+
+// processTemplateFile handles reading, templating, and writing a single file.
+// Removed dryRun parameter
+func processTemplateFile(tmplFS fs.FS, sourcePath, destPath string, info fs.FileInfo, data map[string]interface{}) error {
+	// Read source content
+	content, err := fs.ReadFile(tmplFS, sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to read source file %s from FS: %w", sourcePath, err)
+	}
+
+	processedContent := string(content)
+	destRelPathForTemplateName := filepath.Base(destPath) // Use filename part for template name
+
+	// Process as template only if it had .tmpl extension
+	if strings.HasSuffix(sourcePath, ".tmpl") { // Check original source path for .tmpl
+		tmpl, parseErr := template.New(destRelPathForTemplateName).Funcs(funcMap).Parse(string(content))
+		if parseErr != nil {
+			return fmt.Errorf("failed to parse content template for %s (source %s): %w", destRelPathForTemplateName, sourcePath, parseErr)
+		}
+		var templatedContentBuf bytes.Buffer
+		if execErr := tmpl.Execute(&templatedContentBuf, data); execErr != nil {
+			return fmt.Errorf("failed to execute content template for %s (source %s): %w", destRelPathForTemplateName, sourcePath, execErr)
+		}
+		processedContent = templatedContentBuf.String()
+	} // End of if strings.HasSuffix(sourcePath, ".tmpl")
+
+	// Apply Go-specific replacements (use destRelPathForTemplateName which is just the filename)
+	processedContent = applyGoSpecificReplacements(processedContent, destRelPathForTemplateName, data)
+
+	// Write the final content
+	// Use 0600 for files as recommended by gosec G306 (owner rw only)
+	if err := os.WriteFile(destPath, []byte(processedContent), 0600); err != nil {
+		return fmt.Errorf("failed to write file %s: %w", destPath, err)
+	}
+	return nil
+}
+
+// applyGoSpecificReplacements performs string replacements specific to Go files.
+func applyGoSpecificReplacements(content, destRelPath string, data map[string]interface{}) string {
+	if !strings.HasSuffix(destRelPath, ".go") {
+		return content // Only process .go files
+	}
+
+	mixinNameRaw, _ := data["MixinName"].(string)
+	authorName, _ := data["AuthorName"].(string)
+	// Check against the *destination* relative path (filename only)
+	// This logic might be too simple if templates generate files outside expected dirs
+	// placeholderPkgDir := "pkg/mixin" // Relative path check - Simplified logic below
+	// placeholderCmdDir := "cmd/mixin" // Relative path check - Simplified logic below
+
+	// Determine if the file *should* be in the 'mixin' package based on its eventual path
+	// This requires knowing the full intended relative path, not just the filename.
+	// Let's assume for now that if it's a .go file, it should be package mixin.
+	// A better approach might involve passing the full destRelPath from createMixin.
+	// For now, we'll apply the package replacement more broadly.
+
+	// Ensure package is always 'package mixin' for any generated .go file
+	// This might be too broad if templates generate Go files not intended to be in package mixin.
+	if !strings.Contains(content, "package mixin") {
+		packageLineRegex := regexp.MustCompile(`^package\s+\w+`)
+		content = packageLineRegex.ReplaceAllString(content, "package mixin")
+	}
+
+	// Replace placeholders
+	content = strings.ReplaceAll(content, `"YOURNAME"`, `"`+authorName+`"`)
+	content = strings.ReplaceAll(content, `Use:  "mixin"`, `Use:  "`+mixinNameRaw+`"`)                             // Use raw name for user-facing strings
+	content = strings.ReplaceAll(content, `StartRootSpan(ctx, "mixin")`, `StartRootSpan(ctx, "`+mixinNameRaw+`")`) // Use raw name for tracing
+
+	return content
+}
+
+// runPostGenerationValidation executes validation commands in the output directory.
+func runPostGenerationValidation(outputDir string) error {
+	fmt.Println("\nRunning post-generation validation...")
+	commands := [][]string{
+		{"go", "mod", "tidy"},
+		{"go", "build", "./..."},
+		{"go", "test", "./..."},
+	}
+
+	for _, cmdArgs := range commands {
+		if err := runCommandInDir(outputDir, cmdArgs[0], cmdArgs[1:]...); err != nil {
+			// Log warning but continue validation
+			fmt.Printf("Warning: '%s' failed: %v\n", strings.Join(cmdArgs, " "), err)
+		} else {
+			fmt.Printf("  - %s: OK\n", strings.Join(cmdArgs, " "))
+		}
+	}
+	fmt.Println("\nValidation complete.")
+	return nil // Don't return error from validation failures, just warn
+}
+
+// --- Other helper functions (promptString, promptStringWithDefault, capitalize, runCommandInDir, buildTemplateData) remain the same ---
 
 func promptString(prompt string) string {
 	reader := bufio.NewReader(os.Stdin)
@@ -625,3 +681,5 @@ func buildTemplateData(config *TemplateConfig, name, author, modulePath, outputD
 	}
 	return data, nil
 }
+
+// End of file
