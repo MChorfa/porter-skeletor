@@ -1,6 +1,6 @@
 # Welcome to the Porter Mixin Generator (Skeletor) Documentation
 
-This site provides documentation for the `porter-mixin-generator` tool, which helps scaffold new Porter mixins based on the `skeletor` template.
+This site provides documentation for the `skeletor` tool, which helps scaffold new Porter mixins based on the `skeletor` template.
 
 **Quick Links:**
 

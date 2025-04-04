@@ -1,0 +1,64 @@
+# GitHub Actions workflow for building and deploying the MkDocs site
+# for the {{ .MixinName }} mixin to GitHub Pages.
+name: Deploy Mixin Docs to GitHub Pages
+
+on:
+  release:
+    types: [published] # Trigger only when a release is published
+
+permissions:
+  contents: read # Need read access to checkout the repository
+  pages: write # Need write access to deploy to GitHub Pages
+  id-token: write # Needed for GitHub Pages deployment action
+
+jobs:
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }} # Output the deployed URL
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for git info used by mkdocs-material
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.x # Use a recent Python 3 version
+
+      - name: Install MkDocs and theme
+        run: pip install mkdocs mkdocs-material
+
+      # --- Prepare Documentation Source ---
+      # Create a temporary directory for the site source
+      - name: Create site source directory
+        run: mkdir site_src
+
+      # Copy necessary files into the source directory
+      # Adjust paths if your source files are located elsewhere
+      - name: Copy documentation files
+        run: |
+          cp README.md site_src/index.md # Use README as index
+          cp docs/DEVELOPER_GUIDE.md site_src/developer_guide.md
+          cp docs/OPERATIONS_GUIDE.md site_src/operations_guide.md
+          # Add cp commands for any other markdown files you want in the site
+          # Example: cp CHANGELOG.md site_src/changelog.md
+
+      # --- Build and Deploy ---
+      - name: Build MkDocs site
+        run: mkdocs build --config-file mkdocs.yml --site-dir _site --clean
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './_site' # Path to the built site directory
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

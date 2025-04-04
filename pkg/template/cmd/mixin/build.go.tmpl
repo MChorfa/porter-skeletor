@@ -1,0 +1,20 @@
+package main
+
+import (
+	"github.com/spf13/cobra"
+
+	// Import the generated mixin package using the consistent 'mixin' subpath
+	"{{ .ModulePath }}/pkg/mixin"
+)
+
+// Use the consistent 'mixin' alias
+func buildBuildCommand(m *mixin.Mixin) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "build",
+		Short: "Generate Dockerfile lines for the bundle invocation image",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return m.Build(cmd.Context())
+		},
+	}
+	return cmd
+}

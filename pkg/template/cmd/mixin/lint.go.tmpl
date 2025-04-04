@@ -1,0 +1,19 @@
+package main
+
+import (
+	// Import the generated mixin package using the consistent 'mixin' subpath
+	"{{ .ModulePath }}/pkg/mixin"
+	"github.com/spf13/cobra"
+)
+
+// Use the consistent 'mixin' alias
+func buildLintCommand(m *mixin.Mixin) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "lint",
+		Short: "Execute the lint functionality of this mixin",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return m.PrintLintResults(cmd.Context())
+		},
+	}
+	return cmd
+}

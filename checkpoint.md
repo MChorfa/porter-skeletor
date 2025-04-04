@@ -45,7 +45,7 @@ Next Step: Create feature branch and implement repository selection
 4. Project Artifacts
 Source Code:
 main.go: Entry point for the generator
-cmd/porter-mixin-generator/main.go: Main CLI implementation
+cmd/skeletor/main.go: Main CLI implementation
 templates/: Directory containing template files
 magefile.go: Build automation script
 Template Files:
@@ -70,7 +70,7 @@ Add more test cases for edge scenarios
 Expand template options for different types of mixins (cloud-specific, tool-specific)
 Enhance template validation to verify Porter compatibility
 6. Handoff Notes
-The project is a CLI tool that generates new Porter mixins based on the skeletor template. The main functionality is in cmd/porter-mixin-generator/main.go, which handles command-line arguments, template processing, and file generation.
+The project is a CLI tool that generates new Porter mixins based on the skeletor template. The main functionality is in cmd/skeletor/main.go, which handles command-line arguments, template processing, and file generation.
 
 Key points to understand:
 

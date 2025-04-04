@@ -104,12 +104,12 @@ func ValidateGeneratedMixin(ctx context.Context, client *dagger.Client) error {
 		WithEnvVariable("CGO_ENABLED", "0")
 
 	// Build the generator
-	generatorPath := "/src/bin/porter-mixin-generator" // Path inside container
+	generatorPath := "/src/bin/skeletor" // Path inside container
 	builder = builder.WithExec([]string{
 		"go", "build",
 		"-ldflags", "-s -w",
 		"-o", generatorPath,
-		"./cmd/porter-mixin-generator",
+		"./cmd/skeletor",
 	})
 
 	// Container for running validation on the generated mixin
@@ -132,13 +132,13 @@ func ValidateGeneratedMixin(ctx context.Context, client *dagger.Client) error {
 
 	// Mount the built generator binary into the validator container
 	generatorBinary := builder.File(generatorPath)
-	validator = validator.WithMountedFile("/usr/local/bin/porter-mixin-generator", generatorBinary)
+	validator = validator.WithMountedFile("/usr/local/bin/skeletor", generatorBinary)
 
 	// Generate a sample mixin inside the validator container
 	fmt.Println("--> Generating sample mixin for validation...")
 	generatedMixinPath := "/tmp/generated-mixin"
 	validator = validator.WithExec([]string{
-		"porter-mixin-generator", "create",
+		"skeletor", "create",
 		"--name", "validateme",
 		"--author", "Dagger CI",
 		"--module", "example.com/dagger/validateme",
@@ -342,7 +342,7 @@ func release(ctx context.Context, client *dagger.Client, githubToken string) err
 
 	// Define platforms
 	platforms := []string{"linux/amd64", "linux/arm64"}
-	imageRepo := "ghcr.io/getporter/porter-mixin-generator" // Define image repo base
+	imageRepo := "ghcr.io/getporter/skeletor" // Define image repo base
 	gitTag := os.Getenv("GITHUB_REF_NAME")                  // Assumes GITHUB_REF_NAME is set (e.g., v1.2.3)
 	if gitTag == "" {
 		return fmt.Errorf("GITHUB_REF_NAME environment variable not set, cannot determine image tag")

@@ -1,4 +1,4 @@
-# Dockerfile for porter-mixin-generator
+# Dockerfile for skeletor
 
 # Use a specific Go version for the builder stage
 # Keep this in sync with the go.mod version
@@ -23,18 +23,18 @@ COPY . .
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w" \
-    -o /out/porter-mixin-generator \
-    ./cmd/porter-mixin-generator
+    -o /out/skeletor \
+    ./cmd/skeletor
 
 # Use a minimal base image like scratch or distroless for the final stage
 # Using alpine as a simple, small base
 FROM alpine:latest
 
 # Copy the static binary from the builder stage
-COPY --from=builder /out/porter-mixin-generator /usr/local/bin/porter-mixin-generator
+COPY --from=builder /out/skeletor /usr/local/bin/skeletor
 
 # Set the entrypoint
-ENTRYPOINT ["/usr/local/bin/porter-mixin-generator"]
+ENTRYPOINT ["/usr/local/bin/skeletor"]
 
 # Default command (optional, e.g., show help)
 CMD ["--help"]

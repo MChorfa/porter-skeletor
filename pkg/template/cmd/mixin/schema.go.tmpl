@@ -1,0 +1,19 @@
+package main
+
+import (
+	// Import the generated mixin package using the consistent 'mixin' subpath
+	"{{ .ModulePath }}/pkg/mixin"
+	"github.com/spf13/cobra"
+)
+
+// Use the consistent 'mixin' alias
+func buildSchemaCommand(m *mixin.Mixin) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "schema",
+		Short: "Print the json schema for the mixin",
+		Run: func(cmd *cobra.Command, args []string) {
+			m.PrintSchema()
+		},
+	}
+	return cmd
+}

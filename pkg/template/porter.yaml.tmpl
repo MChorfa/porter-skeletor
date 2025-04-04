@@ -1,0 +1,76 @@
+# Example porter.yaml using the {{ .MixinNameCap }} mixin
+name: {{ .MixinName }}-example-bundle
+version: 0.1.0
+description: "An example bundle demonstrating the {{ .MixinName }} mixin"
+
+# Declare the mixin
+mixins:
+  - {{ .MixinName }}
+
+# Example Install Action
+# Customize the inputs based on your mixin's schema
+install:
+  - {{ .MixinName }}:
+      description: "Example Install Action for {{ .MixinName }}"
+      # TODO: Add required inputs for the install action
+      # Example:
+      # config:
+      #   resource_name: "my-{{ .MixinName }}-resource"
+      #   setting: "value"
+
+# Example Invoke Action (Optional)
+# invoke:
+#   - {{ .MixinName }}:
+#       description: "Example Invoke Action for {{ .MixinName }}"
+#       # TODO: Add required inputs for the invoke action
+#       # Example:
+#       # config:
+#       #   action: "do-something"
+#       #   target: "my-{{ .MixinName }}-resource"
+
+# Example Upgrade Action (Optional)
+# upgrade:
+#   - {{ .MixinName }}:
+#       description: "Example Upgrade Action for {{ .MixinName }}"
+#       # TODO: Add required inputs for the upgrade action
+
+# Example Uninstall Action
+# Customize the inputs based on your mixin's schema
+uninstall:
+  - {{ .MixinName }}:
+      description: "Example Uninstall Action for {{ .MixinName }}"
+      # TODO: Add required inputs for the uninstall action
+
+# Define custom actions if needed
+# customActions:
+#   myCustomAction:
+#     stateless: true # Or false if it modifies state
+#     command:
+#       - {{ .MixinName }}
+#       - --action=myCustomAction
+#     description: "A custom action provided by the mixin"
+
+# Define parameters for the bundle (optional)
+# parameters:
+#   - name: example_param
+#     type: string
+#     default: "default_value"
+
+# Define credentials required by the bundle (optional)
+# credentials:
+#   - name: api_key
+#     env: API_KEY
+#     required: true
+
+# Define outputs from the bundle (optional)
+# outputs:
+#   - name: resource_id
+#     type: string
+#     applyTo:
+#       - install
+#       - upgrade
+#       - invoke
+#     command:
+#       - {{ .MixinName }}
+#       - --action=getOutput
+#       - --output-name=resource_id

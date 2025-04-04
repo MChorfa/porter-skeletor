@@ -1,0 +1,63 @@
+# MkDocs configuration for the {{ .MixinName }} mixin documentation site.
+site_name: Porter {{ .MixinNameCap }} Mixin
+site_url: https://{{ .AuthorName | lower }}.github.io/{{ .MixinName }}/ # Assuming GitHub Pages URL structure
+repo_url: https://github.com/{{ .AuthorName }}/{{ .MixinName }}/ # Link back to the repository
+edit_uri: edit/main/gh-pages-docs/ # Link to edit source files (adjust branch if needed)
+
+theme:
+  name: material # Using the Material for MkDocs theme
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+
+# Define the navigation structure
+# This assumes the markdown files are copied into the 'gh-pages-docs' directory during build
+nav:
+  - Home: index.md
+  - Operations Guide: operations_guide.md
+  - Developer Guide: developer_guide.md
+  # Add other pages as needed
+
+# Markdown extensions
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.mark
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+# Plugins (optional, require installation in the GH Actions workflow)
+# plugins:
+#   - search # Built-in search
+
+# Copyright (optional)
+# Use (now).Year to get the current year from the added 'now' function
+# copyright: Copyright &copy; {{ (now).Year }} {{ .AuthorName }}

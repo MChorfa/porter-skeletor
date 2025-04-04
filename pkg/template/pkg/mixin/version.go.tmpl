@@ -1,0 +1,52 @@
+package mixin
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"get.porter.sh/porter/pkg/porter/version"
+)
+
+// These values can be overridden via ldflags
+var (
+    // Version is the mixin version
+    Version = "0.1.0"
+    // Commit is the git commit
+    Commit = "unknown"
+    // Author is the name of the author
+    Author = "{{ .AuthorName }}"
+)
+
+// PrintVersion prints the mixin's version information.
+func (m *Mixin) PrintVersion(opts version.Options) error {
+	metadata := map[string]interface{}{
+		"Name":          "{{ .MixinName }}", // Use the template variable directly
+		"Version":       Version,
+		"Commit":        Commit,
+		"Author":        Author,
+		"ClientVersion": m.ClientVersion, // Include client version if available
+	}
+
+	switch opts.RawFormat {
+	case "json": // Compare against string literal "json"
+		out, err := json.MarshalIndent(metadata, "", "  ")
+		if err != nil {
+			return fmt.Errorf("error formatting version output as json: %w", err)
+		}
+		fmt.Fprintln(m.Out, string(out))
+	case "plaintext": // Compare against string literal "plaintext"
+		// Simple plaintext output
+		fmt.Fprintf(m.Out, "Name: %s\n", metadata["Name"])
+		fmt.Fprintf(m.Out, "Version: %s\n", metadata["Version"])
+		fmt.Fprintf(m.Out, "Commit: %s\n", metadata["Commit"])
+		fmt.Fprintf(m.Out, "Author: %s\n", metadata["Author"])
+		if m.ClientVersion != "" && m.ClientVersion != defaultClientVersion {
+			fmt.Fprintf(m.Out, "ClientVersion: %s\n", m.ClientVersion)
+		}
+	default:
+		// Use string literals in the error message too
+		return fmt.Errorf("invalid output format %q, allowed formats are %q and %q",
+			opts.RawFormat, "json", "plaintext")
+	}
+	return nil
+}

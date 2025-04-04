@@ -1,0 +1,19 @@
+package main
+
+import (
+	// Import the generated mixin package using the consistent 'mixin' subpath
+	"{{ .ModulePath }}/pkg/mixin"
+	"github.com/spf13/cobra"
+)
+
+// Use the consistent 'mixin' alias
+func buildUninstallCommand(m *mixin.Mixin) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Execute the uninstall functionality of this mixin",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return m.Execute(cmd.Context())
+		},
+	}
+	return cmd
+}

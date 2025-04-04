@@ -1,0 +1,75 @@
+{
+  "name": "Porter Mixin Template",
+  "description": "A template for creating Porter mixins",
+  "variables": {
+    "MixinName": {
+      "description": "Name of the mixin (lowercase)",
+      "type": "string",
+      "required": true
+    },
+    "AuthorName": {
+      "description": "Author name",
+      "type": "string",
+      "required": true
+    },
+    "ModulePath": {
+      "description": "Go module path",
+      "type": "string",
+      "default": "github.com/getporter/{{ .MixinName }}"
+    },
+    "Description": {
+      "description": "Short description of the mixin",
+      "type": "string",
+      "default": "A Porter mixin for {{ .MixinName }}"
+    },
+    "License": {
+      "description": "License for the mixin",
+      "type": "string",
+      "default": "Apache-2.0",
+      "choices": ["Apache-2.0", "MIT", "GPL-3.0"]
+    },
+    "InitGit": {
+      "description": "Initialize git repository?",
+      "type": "bool",
+      "default": true
+    },
+    "MixinFeedRepoURL": {
+      "description": "Git URL for the mixin feed repository (e.g., git@github.com:YOUR/packages.git). Leave blank to skip feed publishing.",
+      "type": "string",
+      "required": false
+    },
+    "MixinFeedBranch": {
+      "description": "Branch in the mixin feed repository to commit to",
+      "type": "string",
+      "default": "main",
+      "required": false
+    },
+    "AuthorEmail": {
+      "description": "Author's email for security contact (used in .well-known/security.txt)",
+      "type": "string",
+      "required": false
+    },
+    "ComplianceLevel": {
+      "description": "Desired compliance level for generated artifacts",
+      "type": "string",
+      "default": "basic",
+      "choices": ["basic", "slsa-l1", "slsa-l3"]
+    }
+  },
+  "hooks": {
+    "post_gen": [
+      "go mod tidy",
+      "go fmt ./..."
+    ]
+  },
+  "ignore": [
+    "README.md",
+    ".github/workflows/template-tests.yml",
+    ".golangci-strict.yml",
+    "pkg/mixin/README.md",
+    "cmd/mixin/README.md"
+  ],
+  "conditional_paths": {
+    ".golangci.yml": "{{ if eq .ComplianceLevel \"slsa-l3\" }}.golangci-strict.yml.tmpl{{ else }}.golangci.yml.tmpl{{ end }}"
+  }
+}

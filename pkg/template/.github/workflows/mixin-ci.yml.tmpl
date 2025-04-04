@@ -1,0 +1,79 @@
+# Generated CI/CD workflow for the {{ .MixinNameCap }} mixin using Dagger
+name: {{ .MixinNameCap }} Mixin CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*.*.*' ] # Trigger release on version tags
+  pull_request:
+    branches: [ main ]
+
+# Top-level permissions required by Dagger/GoReleaser/SLSA
+permissions:
+  contents: read
+  id-token: write # For GoReleaser SLSA provenance / Cosign OIDC
+
+env:
+  # Define Go version consistently
+  # TODO: Consider making this a template variable if needed
+  GO_VERSION: '1.23' # Keep in sync with mixin's go.mod and ci/main.go
+
+jobs:
+  # Main CI job run on pushes and PRs to main
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Install Dagger CLI (required to run the Go SDK pipeline)
+      - name: Install Dagger CLI
+        run: cd /usr/local && curl -L https://dl.dagger.io/dagger/install.sh | sh
+
+      # Run the Dagger pipeline (tests, lint, build defined in ci/main.go)
+      - name: Run Dagger CI Pipeline
+        run: go run ./ci -task ci
+        # Pass secrets via env block here if needed by the Dagger pipeline
+
+  # Release job run only on tag pushes
+  release:
+    # Ensure CI passes before releasing (can be added if needed, but Dagger CI runs tests)
+    # needs: [ci]
+    # Run only on pushing tags like v*.*.*
+    if: success() && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # To create releases and upload artifacts
+      id-token: write # For GoReleaser SLSA provenance / Cosign OIDC
+      packages: write # To push Docker images to GHCR (if mixin Docker images are enabled in .goreleaser.yml.tmpl)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # GoReleaser needs full history for changelogs
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install Dagger CLI
+        run: cd /usr/local && curl -L https://dl.dagger.io/dagger/install.sh | sh
+
+      # Run the Dagger release pipeline (defined in ci/main.go, calling GoReleaser)
+      # This step needs access to GITHUB_TOKEN for GoReleaser to publish
+      - name: Run Dagger Release Pipeline
+        run: go run ./ci -task release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass other secrets if needed for signing or publishing Docker images
+          # DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          # DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          # COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}

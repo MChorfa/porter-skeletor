@@ -1,0 +1,110 @@
+# Use a specific Go version for the builder stage
+# Keep this in sync with the go.mod version
+ARG GO_VERSION=1.23
+FROM golang:${GO_VERSION}-alpine AS builder
+
+WORKDIR /src
+
+# Copy go module files and download dependencies first to leverage Docker cache
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of the source code
+COPY . .
+
+# Build the mixin binary
+# Using CGO_ENABLED=0 produces a static binary
+# Using ldflags to strip debug information reduces binary size
+ARG MIXIN_NAME={{ .MixinName }}
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/bin/${MIXIN_NAME} ./cmd/${MIXIN_NAME}
+
+# Final stage depends on Compliance Level
+{{ if eq .ComplianceLevel "basic" }}
+# --- Basic Compliance Level ---
+# Use a minimal base image for the final stage
+FROM alpine:latest
+
+ARG MIXIN_NAME={{ .MixinName }}
+WORKDIR /porter/mixins/${MIXIN_NAME}
+
+# Copy the static binary from the builder stage
+COPY --from=builder /out/bin/${MIXIN_NAME} /usr/local/bin/${MIXIN_NAME}
+
+# Add OCI labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
+LABEL org.opencontainers.image.title="{{ .MixinName }}" \
+      org.opencontainers.image.description="{{ .Description }}" \
+      org.opencontainers.image.url="https://github.com/{{ .AuthorName }}/{{ .MixinName }}" \
+      org.opencontainers.image.source="https://github.com/{{ .AuthorName }}/{{ .MixinName }}" \
+      org.opencontainers.image.vendor="{{ .AuthorName }}" \
+      org.opencontainers.image.licenses="{{ .License }}"
+      # org.opencontainers.image.version="{{ .Version }}" # Usually set during build by GoReleaser/CI
+      # org.opencontainers.image.revision="{{ .Commit }}" # Usually set during build by GoReleaser/CI
+      # org.opencontainers.image.created={{ .Date }} # Usually set during build by GoReleaser/CI
+
+# Set the entrypoint
+ENTRYPOINT ["/usr/local/bin/${MIXIN_NAME}"]
+CMD ["version"]
+
+{{ else if eq .ComplianceLevel "slsa-l1" }}
+# --- SLSA Level 1 Compliance ---
+# Placeholder: Add SLSA L1 specific steps here.
+# This might involve using a different base image, adding specific build arguments,
+# or including tools needed for L1 compliance checks.
+FROM alpine:latest # Example: Potentially use a different base like distroless or UBI minimal
+
+ARG MIXIN_NAME={{ .MixinName }}
+WORKDIR /porter/mixins/${MIXIN_NAME} # Or /app depending on base image conventions
+
+# Copy the static binary from the builder stage
+COPY --from=builder /out/bin/${MIXIN_NAME} /usr/local/bin/${MIXIN_NAME} # Adjust path if WORKDIR changes
+
+# Add OCI labels (Consider adding SLSA-specific labels if applicable)
+LABEL org.opencontainers.image.title="{{ .MixinName }}" \
+      org.opencontainers.image.description="{{ .Description }} (SLSA L1 Compliant)" \
+      org.opencontainers.image.url="https://github.com/{{ .AuthorName }}/{{ .MixinName }}" \
+      org.opencontainers.image.source="https://github.com/{{ .AuthorName }}/{{ .MixinName }}" \
+      org.opencontainers.image.vendor="{{ .AuthorName }}" \
+      org.opencontainers.image.licenses="{{ .License }}"
+      # Add other labels as needed
+
+# Placeholder: Add any L1 specific runtime configurations or checks here
+
+# Set the entrypoint
+ENTRYPOINT ["/usr/local/bin/${MIXIN_NAME}"] # Adjust path if WORKDIR changes
+CMD ["version"]
+
+{{ else if eq .ComplianceLevel "slsa-l3" }}
+# --- SLSA Level 3 Compliance ---
+# Placeholder: Add SLSA L3 specific steps here.
+# This typically involves more rigorous steps like:
+# - Using a specific, hardened base image (e.g., distroless nonroot)
+# - Integrating steps for generating build provenance (e.g., using slsa-verifier or similar tools)
+# - Potentially including signing steps or tools (e.g., cosign)
+# - Ensuring build environment isolation and hermeticity (handled more in CI/build process)
+FROM gcr.io/distroless/static-debian11 AS final # Example: Using distroless static
+
+ARG MIXIN_NAME={{ .MixinName }}
+WORKDIR /app # Distroless convention
+
+# Copy the static binary from the builder stage
+COPY --from=builder /out/bin/${MIXIN_NAME} /app/${MIXIN_NAME}
+
+# Add OCI labels (Include SLSA provenance labels if generated)
+LABEL org.opencontainers.image.title="{{ .MixinName }}" \
+      org.opencontainers.image.description="{{ .Description }} (SLSA L3 Compliant)" \
+      org.opencontainers.image.url="https://github.com/{{ .AuthorName }}/{{ .MixinName }}" \
+      org.opencontainers.image.source="https://github.com/{{ .AuthorName }}/{{ .MixinName }}" \
+      org.opencontainers.image.vendor="{{ .AuthorName }}" \
+      org.opencontainers.image.licenses="{{ .License }}"
+      # Add SLSA predicate labels, version, revision, created etc.
+
+# Placeholder: Add any L3 specific runtime configurations or checks here
+# Placeholder: Steps to include provenance attestations if not done externally
+
+USER nonroot:nonroot # Run as non-root user if using distroless
+
+# Set the entrypoint
+ENTRYPOINT ["/app/${MIXIN_NAME}"]
+CMD ["version"]
+
+{{ end }}

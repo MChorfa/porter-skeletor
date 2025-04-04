@@ -1,0 +1,91 @@
+package mixin
+
+import (
+	"encoding/json" // Add encoding/json for JSON comparison if needed
+	"fmt"           // Add fmt for constructing expected strings
+	// "strings" // Remove unused strings import
+	"testing"
+
+	"get.porter.sh/porter/pkg/porter/version"
+	"get.porter.sh/porter/pkg/printer" // Re-add printer import
+	// Remove incorrect import "github.com/getporter/skeletor/pkg"
+	"github.com/stretchr/testify/assert" // Use assert for better testing
+	"github.com/stretchr/testify/require"
+)
+
+func TestPrintVersion(t *testing.T) {
+	// Mock values set by compile time (or potentially build flags)
+	// Note: Modifying package-level vars in tests can be flaky. Consider alternatives if possible.
+	originalVersion := Version
+	originalCommit := Commit
+	originalAuthor := Author
+	Version = "v1.2.3"
+	Commit = "abc1234"
+	Author = "Test Author Name" // Match the Author set in the template
+	defer func() {
+		Version = originalVersion
+		Commit = originalCommit
+		Author = originalAuthor
+	}()
+
+	m := NewTestMixin(t)
+	// Set mixin name as it would be passed during generation
+	mixinName := "testmixin"
+
+	opts := version.Options{}
+	opts.RawFormat = string(printer.FormatPlaintext) // Use printer constant
+	// No need to validate opts if we set RawFormat directly
+
+	err := m.PrintVersion(opts)
+	require.NoError(t, err)
+
+	gotOutput := m.TestContext.GetOutput()
+
+	// Construct the expected multi-line output based on the PrintVersion implementation
+	wantOutput := fmt.Sprintf("Name: %s\nVersion: %s\nCommit: %s\nAuthor: %s\n",
+		mixinName, Version, Commit, Author)
+
+	assert.Equal(t, wantOutput, gotOutput)
+}
+
+func TestPrintJsonVersion(t *testing.T) {
+	// Mock values
+	originalVersion := Version
+	originalCommit := Commit
+	originalAuthor := Author
+	Version = "v4.5.6"
+	Commit = "def5678"
+	Author = "Another Author"
+	defer func() {
+		Version = originalVersion
+		Commit = originalCommit
+		Author = originalAuthor
+	}()
+
+	m := NewTestMixin(t)
+	// Use the same consistent name as the other test for simplicity
+	mixinName := "testmixin"
+	m.ClientVersion = "v0.2.0" // Test with a client version set
+
+	opts := version.Options{}
+	opts.RawFormat = string(printer.FormatJson) // Use printer constant
+
+	err := m.PrintVersion(opts)
+	require.NoError(t, err)
+
+	gotOutput := m.TestContext.GetOutput()
+
+	// Construct the expected JSON structure
+	wantData := map[string]interface{}{
+		"Name":          mixinName,
+		"Version":       Version,
+		"Commit":        Commit,
+		"Author":        Author,
+		"ClientVersion": m.ClientVersion,
+	}
+	wantJSON, err := json.MarshalIndent(wantData, "", "  ")
+	require.NoError(t, err, "Failed to marshal expected JSON")
+
+	// Use JSONEq for robust comparison (ignores key order and whitespace differences)
+	assert.JSONEq(t, string(wantJSON)+"\n", gotOutput) // Add newline as Println is used
+}

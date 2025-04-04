@@ -1,0 +1,93 @@
+# {{ .MixinNameCap }} Mixin - Operations Guide
+
+This guide explains how to use the `{{ .MixinName }}` mixin within your Porter bundles.
+
+## 1. Introduction
+
+The `{{ .MixinName }}` mixin allows you to perform [briefly describe the mixin's core purpose, e.g., "interact with MyService API", "execute custom shell commands", "manage resources in XYZ Cloud"].
+
+## 2. Installation
+
+Before using the mixin in a bundle, ensure it's installed in your Porter home directory (`~/.porter`).
+
+```bash
+# Install the latest version (assuming it's published to the community feed)
+porter mixin install {{ .MixinName }}
+
+# Or install a specific version
+porter mixin install {{ .MixinName }} --version vX.Y.Z
+```
+
+If this is a custom or unpublished mixin, you might need to build it locally and install it using `porter mixin install {{ .MixinName }} --feed-url /path/to/feed.xml` or by copying the binary. Refer to the mixin's specific installation instructions if it's not in the standard feed.
+
+## 3. Prerequisites
+
+To use this mixin successfully at runtime, you might need:
+
+*   **Credentials:** [List any required credentials, e.g., API keys, service principal details, cloud provider credentials. Explain how they should be configured in Porter (e.g., `porter credential create ...`)].
+*   **Permissions:** [List any specific permissions the credential needs, e.g., read/write access to specific services].
+*   **Tools:** [List any external tools the mixin relies on that might need to be present in the execution environment, although the mixin's `build` command should handle installing these in the bundle image].
+*   **Network Access:** [Mention if the mixin needs outbound access to specific endpoints].
+
+Consult the main README or the mixin's documentation for detailed prerequisite information.
+
+## 4. Usage in `porter.yaml`
+
+To use the mixin in your `porter.yaml`:
+
+1.  **Declare the Mixin:** Add `{{ .MixinName }}` to the `mixins:` list at the top level of your `porter.yaml`.
+
+    ```yaml
+    mixins:
+      - {{ .MixinName }}
+      # - other mixins...
+    ```
+
+2.  **Define a Step:** Add a step within an action (`install`, `upgrade`, `uninstall`, or a custom action) using the `{{ .MixinName }}` key.
+
+    ```yaml
+    install:
+      - {{ .MixinName }}:
+          description: "Describe the action this step performs"
+          # --- Mixin-Specific Inputs ---
+          # Add required and optional input fields here based on the mixin's schema.
+          # Example:
+          # targetResource: "my-resource-name"
+          # configurationFile: "/path/to/config.json"
+          # someFlag: true
+          # connectionString: "{{ "{{" }} bundle.credentials.my-api-key {{ "}}" }}" # Escape template delimiters
+          # resourceGroup: "{{ "{{" }} bundle.parameters.rg-name {{ "}}" }}" # Escape template delimiters
+
+          # --- Outputs (Optional) ---
+          # Declare any outputs you want to capture from this step
+          outputs:
+            - name: "outputName"
+              # If the output is sensitive, use jsonPath and specify secret/key
+              # jsonPath: "$.sensitive.value"
+              # secret: "my-secret-name"
+              # key: "secret-key"
+              # If not sensitive, use jsonPath to extract from mixin's stdout
+              # jsonPath: '"$.status.id"'
+    ```
+
+*   Refer to the mixin's schema (`porter mixin schema {{ .MixinName }}`) or its documentation for the exact input fields available.
+*   Use Porter's standard syntax (`{{ "{{" }} bundle.parameters.PARAM {{ "}}" }}`, `{{ "{{" }} bundle.credentials.CRED {{ "}}" }}`) to pass dynamic values to the mixin step. # Escape template delimiters
+
+## 5. Outputs
+
+If a step using the `{{ .MixinName }}` mixin defines outputs, you can reference them in subsequent steps within the same action using `{{ "{{" }} bundle.outputs.outputName {{ "}}" }}`. # Escape template delimiters
+
+## 6. Troubleshooting
+
+*   **Enable Debug Logs:** Run the bundle action with the `--debug` flag (`porter install --debug`, `porter upgrade --debug`, etc.). This will show verbose logging from both Porter and the mixin.
+*   **Check Credentials/Permissions:** Ensure the credentials used by the bundle have the necessary permissions for the actions the mixin is performing.
+*   **Consult Mixin Logs:** Look for specific error messages printed by the `{{ .MixinName }}` mixin in the bundle execution output.
+*   **Schema Validation:** Run `porter validate` on your `porter.yaml` to check for schema errors in your mixin step definition.
+
+## 7. Uninstalling
+
+When Porter runs the `uninstall` action for your bundle, it will execute any steps defined under `uninstall:` in your `porter.yaml`. If you have a `{{ .MixinName }}:` step under `uninstall`, the mixin's uninstall logic will be triggered to clean up any resources it created.
+
+---
+
+For more detailed information, please refer to the main README of the `{{ .MixinName }}` mixin.

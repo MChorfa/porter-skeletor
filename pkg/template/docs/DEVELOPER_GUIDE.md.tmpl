@@ -1,0 +1,99 @@
+# {{ .MixinNameCap }} Mixin - Developer Guide
+
+Welcome to the developer guide for the `{{ .MixinName }}` mixin! This guide provides information on how to build, test, and extend the mixin's functionality.
+
+## 1. Getting Started
+
+### Prerequisites
+
+*   Go (version specified in `go.mod`)
+*   [Mage](https://magefile.org/)
+*   Docker (for building/testing the runtime image)
+*   (Optional) [golangci-lint](https://golangci-lint.run/) for local linting
+*   (Optional) [gosec](https://github.com/securego/gosec) for local security scanning
+
+### Building
+
+The primary build tool is Mage. Common commands:
+
+*   `go run mage.go build`: Build the mixin binary for your current OS/architecture into the `bin/` directory.
+*   `go run mage.go clean`: Remove the `bin/` directory.
+
+### Testing
+
+*   `go run mage.go testunit`: Run unit tests (typically files ending in `_test.go` excluding integration tests).
+*   `go run mage.go testintegration`: Run integration tests (files tagged with `//go:build integration`). *Note: Integration tests might require specific setup or external resources.*
+*   `go run mage.go test`: Run both unit and integration tests, followed by linters.
+
+## 2. Project Structure
+
+*   `cmd/{{ .MixinName }}/`: Contains the main entrypoint and CLI command definitions (using Cobra) for the mixin runtime (`build`, `install`, `invoke`, etc.). Files here are generated from `templates/cmd/mixin/*.go.tmpl`.
+*   `pkg/{{ .MixinName }}/`: Contains the core logic for the mixin's actions.
+    *   `mixin.go`: Defines the main `Mixin` struct and methods corresponding to Porter/CNAB actions (Build, Install, Upgrade, Uninstall, Invoke). **This is where you'll implement the primary functionality.**
+    *   `schema.go`: Defines the mixin's input/output schema and handles the `schema` command.
+    *   `version.go`: Handles version information.
+    *   *(Other helper files as needed)*
+*   `magefile.go`: Defines build, test, and lint tasks using Mage. Inherits common tasks from `get.porter.sh/magefiles`.
+*   `Dockerfile.tmpl`: Template for the mixin's runtime Docker image. Uses Go template conditionals based on `ComplianceLevel`.
+*   `.goreleaser.yml.tmpl`: Template for GoReleaser configuration, used for building release artifacts (binaries, archives, SBOMs, provenance). Uses Go template conditionals based on `ComplianceLevel`.
+*   `.golangci.yml` (Generated): Linter configuration file. The source template (`.golangci.yml.tmpl` or `.golangci-strict.yml.tmpl`) is chosen based on `ComplianceLevel`.
+*   `go.mod`, `go.sum`: Go module definition and checksums.
+*   `tools.go`: Defines Go tool dependencies (like linters).
+
+## 3. Implementing Mixin Logic
+
+The core of your mixin's functionality resides in `pkg/{{ .MixinName }}/mixin.go`. You need to implement the methods corresponding to the CNAB actions Porter uses:
+
+*   **`Build(ctx context.Context) error`**: This method is called by Porter during `porter build`. It should output any necessary Dockerfile lines (to stdout) required to prepare the bundle's invocation image for using this mixin at runtime. For example, installing required CLIs (like `helm`, `kubectl`, `aws`) or setting up configuration.
+*   **`Install(ctx context.Context) error`**: Implements the `install` action. Reads input from stdin (provided by Porter, based on the step definition in `porter.yaml`), performs the installation logic, and writes any outputs to stdout.
+*   **`Upgrade(ctx context.Context) error`**: Implements the `upgrade` action. Similar flow to `Install`.
+*   **`Invoke(ctx context.Context, action string) error`**: Implements custom actions defined in `porter.yaml`. The `action` parameter specifies which custom action is being invoked. Similar flow to `Install`.
+*   **`Uninstall(ctx context.Context) error`**: Implements the `uninstall` action. Similar flow to `Install`.
+
+Refer to the comments within `pkg/{{ .MixinName }}/mixin.go` for more details on accessing input data and writing outputs.
+
+## 4. Input Schema
+
+The mixin defines the structure of the YAML it expects for each step in `pkg/{{ .MixinName }}/schema.go`.
+
+*   Modify the `GetSchema` function to return a JSON schema describing the expected input fields for your mixin's steps (e.g., connection strings, resource names, flags).
+*   Porter uses the `schema` command (implemented via `PrintSchema`) to validate the `porter.yaml` file.
+
+## 5. Outputs
+
+Mixins can declare outputs in the `porter.yaml` step definition. To produce an output from your mixin logic (e.g., in `Install` or `Invoke`):
+
+1.  Ensure the output is declared in the step's `outputs` section in `porter.yaml`.
+2.  Within your mixin action method (e.g., `Install`), use `m.WriteMixinOutputToFile(outputName, value)` to write the output value to the location Porter expects. Porter reads these files after the step executes.
+
+## 6. Testing
+
+*   **Unit Tests:** Add tests for individual functions within the `pkg/{{ .MixinName }}/` directory. Place these in `_test.go` files (e.g., `mixin_test.go`). Use standard Go testing practices.
+*   **Integration Tests:** Add tests that build and run the mixin binary to verify end-to-end behavior. Place these in files tagged with `//go:build integration` (e.g., `mixin_integration_test.go`). These tests might require external dependencies (like Docker or cloud credentials).
+
+## 7. Debugging
+
+*   Run the mixin binary directly (e.g., `bin/{{ .MixinName }} install < path/to/step.yaml`).
+*   Use the `--debug` flag (e.g., `bin/{{ .MixinName }} --debug install < path/to/step.yaml`) to enable verbose logging.
+*   Use a Go debugger (like Delve) attached to the mixin process.
+
+## 8. Dependencies
+
+*   Manage Go dependencies using `go get` and `go mod tidy`.
+*   Add build-time tool dependencies (like linters) to `tools.go` and run `go generate` to update `go.mod`.
+
+## 9. Releasing
+
+Releases are typically automated via the CI pipeline defined in `.github/workflows/mixin-ci.yml` (or similar). This workflow usually runs on Git tags and uses GoReleaser (configured via `.goreleaser.yml.tmpl`) to:
+
+*   Build binaries for multiple platforms.
+*   Generate SBOMs and SLSA provenance (especially for L3).
+*   Sign artifacts (especially for L3).
+*   Create a GitHub Release with all assets.
+
+Consult the `.goreleaser.yml.tmpl` and the CI workflow file for specifics.
+
+---
+
+Happy Mixin Developing!
+Author: {{ .AuthorName }}
