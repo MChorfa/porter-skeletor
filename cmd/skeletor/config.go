@@ -164,7 +164,9 @@ func createCommand(name string, args ...string) *exec.Cmd {
 
 	// Handle potential issue with 'go' command on windows needing cmd /c
 	if runtime.GOOS == "windows" && (name == "git" || name == "go") {
+		// #nosec G204 -- Command is restricted by allow-list, args come from trusted template or user input
 		return exec.Command("cmd", append([]string{"/c", name}, args...)...)
 	}
+	// #nosec G204 -- Command is restricted by allow-list, args come from trusted template or user input
 	return exec.Command(name, args...)
 }

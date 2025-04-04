@@ -1,5 +1,3 @@
-//go:build dagger
-
 package main
 
 import (
@@ -14,9 +12,9 @@ import (
 
 // Define constants for Go version and image
 const (
-	// TODO: Consider making goVersion a template variable if needed
-	goVersion = "1.23" // Keep in sync with mixin's go.mod
-	goImage   = "golang:" + goVersion + "-alpine"
+	goVersion = "1.24" // Keep in sync with mixin's go.mod toolchain directive
+	// Use Debian-based image for better CGO compatibility
+	goImage   = "golang:" + goVersion + "-bookworm"
 	mixinName = "{{ .MixinName }}" // Use template variable
 )
 
@@ -99,7 +97,6 @@ func test(ctx context.Context, client *dagger.Client) error {
 
 	// Install tools
 	golang = golang.
-		WithExec([]string{"apk", "add", "--no-cache", "git", "build-base"}).
 		WithExec([]string{"go", "install", "github.com/securego/gosec/v2/cmd/gosec@" + gosecVersion}).
 		WithExec([]string{"go", "install", "golang.org/x/vuln/cmd/govulncheck@" + govulncheckVersion}).
 		WithExec([]string{"go", "install", "github.com/magefile/mage@" + mageVersion}).

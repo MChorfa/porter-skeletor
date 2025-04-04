@@ -190,6 +190,7 @@ func getTemplateSource(templateUrl, templateDir string) (fs.FS, string, string, 
 		}
 
 		fmt.Printf("Fetching template from %s...\n", templateUrl)
+		// #nosec G204 -- URL is from user flag, tempDir is generated, command is allow-listed
 		cmd := createCommand("git", "clone", "--depth=1", templateUrl, tempDir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -240,6 +241,11 @@ func createMixin(data map[string]interface{}, tmplFS fs.FS, templateRoot, output
 			destRelPath = strings.TrimPrefix(path, templateRoot+"/")
 		} else if path == templateRoot {
 			// Skip processing the root directory itself if templateRoot isn't "."
+			return nil
+		}
+
+		// Skip template.json itself by checking the original path within the FS
+		if path == filepath.Join(templateRoot, "template.json") {
 			return nil
 		}
 
@@ -338,8 +344,8 @@ func createMixin(data map[string]interface{}, tmplFS fs.FS, templateRoot, output
 				fmt.Printf("[Dry Run] Would create directory: %s\n", destPath)
 				return nil // Don't actually create in dry run
 			}
-			// Use 0755 for directories to ensure writability inside
-			return os.MkdirAll(destPath, 0755)
+			// Use 0750 for directories as recommended by gosec G301
+			return os.MkdirAll(destPath, 0750)
 		}
 
 		// Handle files: Read content from sourcePath within the FS
@@ -403,8 +409,8 @@ func createMixin(data map[string]interface{}, tmplFS fs.FS, templateRoot, output
 			// Optionally print content diff or summary here if needed
 			return nil // Don't actually write in dry run
 		}
-		// Use 0644 for files
-		return os.WriteFile(destPath, []byte(processedContent), 0644)
+		// Use 0600 for files as recommended by gosec G306 (owner rw only)
+		return os.WriteFile(destPath, []byte(processedContent), 0600)
 	})
 
 	if err != nil {

@@ -14,7 +14,7 @@ import (
 // Define constants for Go version and image
 const (
 	goVersion = "1.23" // Keep in sync with go.mod
-	goImage   = "golang:" + goVersion + "-alpine"
+	goImage   = "golang:" + goVersion + "-bookworm"
 	mixinName = "skeletor" // Should match the project name or be dynamic if needed
 	// goreleaserVersion constant removed
 )
@@ -226,7 +226,6 @@ func test(ctx context.Context, client *dagger.Client) error {
 	mageVersion := "v1.15.0"       // Example pinned version
 
 	golang = golang.
-		WithExec([]string{"apk", "add", "--no-cache", "git", "build-base"}). // Add git and build tools if needed
 		WithExec([]string{"go", "install", "github.com/securego/gosec/v2/cmd/gosec@" + gosecVersion}).
 		WithExec([]string{"go", "install", "golang.org/x/vuln/cmd/govulncheck@" + govulncheckVersion}).
 		WithExec([]string{"go", "install", "github.com/magefile/mage@" + mageVersion}) // Install mage
@@ -343,7 +342,7 @@ func release(ctx context.Context, client *dagger.Client, githubToken string) err
 	// Define platforms
 	platforms := []string{"linux/amd64", "linux/arm64"}
 	imageRepo := "ghcr.io/getporter/skeletor" // Define image repo base
-	gitTag := os.Getenv("GITHUB_REF_NAME")                  // Assumes GITHUB_REF_NAME is set (e.g., v1.2.3)
+	gitTag := os.Getenv("GITHUB_REF_NAME")    // Assumes GITHUB_REF_NAME is set (e.g., v1.2.3)
 	if gitTag == "" {
 		return fmt.Errorf("GITHUB_REF_NAME environment variable not set, cannot determine image tag")
 	}

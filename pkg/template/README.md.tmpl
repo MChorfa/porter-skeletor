@@ -69,7 +69,7 @@ install:
 ### Prerequisites
 
 - Go 1.23+
-- [Mage](https://magefile.org/)
+- [Mage](https://magefile.org/) (`go install github.com/magefile/mage@latest`)
 - Docker (if running tests/builds via the Dagger pipeline)
 - [Dagger CLI](https://docs.dagger.io/install) (if running pipeline locally)
 
@@ -109,7 +109,8 @@ mage test
 Alternatively, run the full CI pipeline (including tests, linting, and a sample build) using Dagger:
 ```bash
 # Ensure Docker is running
-go run ./ci -task ci
+# The -tags tools flag is necessary to include the pipeline definition
+go run -tags tools ./ci -task ci
 ```
 
 ## Releasing

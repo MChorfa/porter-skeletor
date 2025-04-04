@@ -33,6 +33,7 @@ func main() {
 	}
 	// Use the cleaned path for the clone operation
 	fmt.Println("Cloning skeletor template...")
+	// #nosec G204 -- URL is hardcoded, output dir is cleaned, command is git clone
 	cmd := exec.Command("git", "clone", "https://github.com/getporter/skeletor.git", cleanedOutputDir)
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Error cloning repository: %v\n", err)

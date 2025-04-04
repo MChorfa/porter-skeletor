@@ -7,14 +7,14 @@ Welcome to the developer guide for the `{{ .MixinName }}` mixin! This guide prov
 ### Prerequisites
 
 *   Go (version specified in `go.mod`)
-*   [Mage](https://magefile.org/)
+*   [Mage](https://magefile.org/) (`go install github.com/magefile/mage@latest`)
 *   Docker (for building/testing the runtime image)
 *   (Optional) [golangci-lint](https://golangci-lint.run/) for local linting
 *   (Optional) [gosec](https://github.com/securego/gosec) for local security scanning
 
 ### Building
 
-The primary build tool is Mage. Common commands:
+The primary build tool is Mage, executed via `go run mage.go`. Common commands:
 
 *   `go run mage.go build`: Build the mixin binary for your current OS/architecture into the `bin/` directory.
 *   `go run mage.go clean`: Remove the `bin/` directory.

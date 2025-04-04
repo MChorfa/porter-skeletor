@@ -9,5 +9,6 @@ import (
 var schema string
 
 func (m *Mixin) PrintSchema() {
-	fmt.Fprintf(m.Out, schema)
+	// Use Fprint instead of Fprintf for staticcheck SA1006
+	fmt.Fprint(m.Out, schema)
 }

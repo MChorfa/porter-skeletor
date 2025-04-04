@@ -7,8 +7,6 @@ This repository contains the `skeletor`, a command-line tool designed to streaml
 
 **[View Documentation Site](https://getporter.github.io/skeletor/)** <!-- Add prominent link -->
 
-*Note: Currently, the generator requires specifying a template source via `--template-url` (defaults to cloning this repo) or `--template-dir`. Direct embedding of the default template is temporarily disabled due to build environment issues.*
-
 ## Features
 
 * **Rapid Scaffolding:** Quickly generate a new Porter mixin project structure.

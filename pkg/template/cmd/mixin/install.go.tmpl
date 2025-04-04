@@ -6,10 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	commandFile string
-)
-
 // Use the consistent 'mixin' alias
 func buildInstallCommand(m *mixin.Mixin) *cobra.Command {
 	cmd := &cobra.Command{

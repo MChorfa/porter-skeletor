@@ -57,7 +57,8 @@ func (a Action) GetSteps() []builder.ExecutableStep {
 }
 
 type Step struct {
-	Instruction `yaml:"skeletor"`
+	// Use the mixin name template variable for the yaml tag
+	Instruction `yaml:"{{ .MixinName }}"`
 }
 
 // Actions is a set of actions, and the steps, passed from Porter.
