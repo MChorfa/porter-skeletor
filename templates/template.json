@@ -1,0 +1,23 @@
+{
+  "defaults": {
+    "MixinName": "",
+    "MixinNameCap": "",
+    "AuthorName": "",
+    "ModulePath": "",
+    "ComplianceLevel": "standard"
+  },
+  "required": ["MixinName", "AuthorName", "ModulePath"],
+  "hooks": {
+    "post_gen": [
+      "cd {{.OutputDir}} && go mod tidy"
+    ]
+  },
+  "ignore": [
+    "template.json",
+    ".git/**"
+  ],
+  "conditional_paths": {
+    "security/compliance.go.tmpl": "{{if eq .ComplianceLevel \"advanced\"}}security/compliance.go.tmpl{{else}}{{end}}",
+    "security/basic_checks.go.tmpl": "{{if ne .ComplianceLevel \"basic\"}}security/basic_checks.go.tmpl{{else}}{{end}}"
+  }
+}

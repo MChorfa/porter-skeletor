@@ -1,4 +1,4 @@
-package main
+kcpackage main
 
 import (
 	"bufio"
@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp" // Ensure regexp is imported
 	"strconv"
 	"strings"
 	"text/template" // Import text/template
@@ -32,10 +33,11 @@ func init() {
 
 // TemplateData holds the variables to be replaced in templates
 type TemplateData struct {
-	MixinName    string // Name of the mixin (lowercase)
-	MixinNameCap string // Capitalized mixin name
-	AuthorName   string // Author's name
-	ModulePath   string // Go module path
+	MixinName       string // Name of the mixin (lowercase)
+	MixinNameCap    string // Capitalized mixin name
+	AuthorName      string // Author's name
+	ModulePath      string // Go module path
+	ComplianceLevel string // Compliance level (basic, standard, advanced)
 }
 
 func main() {
@@ -58,15 +60,16 @@ func buildRootCommand() *cobra.Command {
 
 func buildCreateCommand() *cobra.Command {
 	var (
-		name           string
-		author         string
-		modulePath     string
-		outputDir      string
-		nonInteractive bool
-		templateUrl    string
-		templateDir    string
-		extraVars      []string
-		dryRun         bool // Add dryRun variable
+		name            string
+		author          string
+		modulePath      string
+		outputDir       string
+		nonInteractive  bool
+		templateUrl     string
+		templateDir     string
+		extraVars       []string
+		dryRun          bool   // Add dryRun variable
+		complianceLevel string // Declare complianceLevel
 	)
 
 	cmd := &cobra.Command{
@@ -90,7 +93,8 @@ func buildCreateCommand() *cobra.Command {
 			}
 
 			// Create template data from config and flags
-			data, err := buildTemplateData(config, name, author, modulePath, outputDir, nonInteractive, extraVars)
+			// Pass complianceLevel to buildTemplateData
+			data, err := buildTemplateData(config, name, author, modulePath, outputDir, complianceLevel, nonInteractive, extraVars)
 			if err != nil {
 				return err
 			}
@@ -160,6 +164,8 @@ func buildCreateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&templateDir, "template-dir", "", "Local directory containing the template")
 	cmd.Flags().StringArrayVar(&extraVars, "var", []string{}, "Extra variables in KEY=VALUE format")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Simulate generation without writing files") // Add dry-run flag
+	// Use "basic" as default to match template.json, ensure choices match template.json
+	cmd.Flags().StringVar(&complianceLevel, "compliance-level", "basic", "Compliance level (basic, slsa-l1, slsa-l3)")
 
 	return cmd
 }
@@ -378,8 +384,8 @@ func createMixin(data map[string]interface{}, tmplFS fs.FS, templateRoot, output
 		} // else: treat as plain file, use raw content
 
 		// Perform Go-specific string replacements *after* template execution
-		mixinNameRaw, _ := data["MixinName"].(string)           // Use raw mixin name from data
-		sanitizedName, _ := data["SanitizedMixinName"].(string) // Use sanitized name from data
+		mixinNameRaw, _ := data["MixinName"].(string) // Use raw mixin name from data
+		// sanitizedName, _ := data["SanitizedMixinName"].(string) // Remove unused variable
 		authorName, _ := data["AuthorName"].(string)
 		// Use destRelPath for checking file type/location relative to template structure root
 		placeholderPkgDir := filepath.Join("pkg", "mixin") // Assuming template structure root contains pkg/mixin
@@ -387,10 +393,17 @@ func createMixin(data map[string]interface{}, tmplFS fs.FS, templateRoot, output
 
 		// Check against the *destination* relative path for Go file replacements
 		if strings.HasSuffix(destRelPath, ".go") {
-			// Replace package declaration ONLY if it's still 'package mixin' and in the expected template dirs
+			// Ensure package declaration is always 'package mixin' for files in the mixin directories
 			if strings.HasPrefix(destRelPath, placeholderPkgDir) || strings.HasPrefix(destRelPath, placeholderCmdDir) {
-				// Use sanitizedName for package name
-				processedContent = strings.ReplaceAll(processedContent, "package mixin", "package "+sanitizedName)
+				// Replace if it's something else, ensure it becomes 'package mixin'
+				// This handles cases where the template might have a different placeholder
+				if !strings.Contains(processedContent, "package mixin") {
+					// Basic replacement assuming "package othername" format
+					// A more robust regex might be needed if templates vary wildly
+					packageLineRegex := regexp.MustCompile(`^package\s+\w+`) // Use regexp here
+					processedContent = packageLineRegex.ReplaceAllString(processedContent, "package mixin")
+				}
+				// If it already contains "package mixin", do nothing.
 			}
 
 			// Replace ONLY the specific placeholder string for author name
@@ -491,8 +504,13 @@ func runCommandInDir(dir string, command string, args ...string) error {
 	return nil
 }
 
-func buildTemplateData(config *TemplateConfig, name, author, modulePath, outputDir string, nonInteractive bool, extraVars []string) (map[string]interface{}, error) {
+// Update buildTemplateData signature and logic
+func buildTemplateData(config *TemplateConfig, name, author, modulePath, outputDir, complianceLevel string, nonInteractive bool, extraVars []string) (map[string]interface{}, error) {
 	data := make(map[string]interface{})
+
+	// Add compliance level first so it can be used in default value templates
+	data["ComplianceLevel"] = complianceLevel
+
 	for _, varDef := range extraVars {
 		parts := strings.SplitN(varDef, "=", 2)
 		if len(parts) != 2 {

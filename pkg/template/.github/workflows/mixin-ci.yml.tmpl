@@ -77,3 +77,24 @@ jobs:
           # DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           # DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           # COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      # Build and Deploy MkDocs site to GitHub Pages
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install MkDocs dependencies
+        run: pip install mkdocs mkdocs-material pymdown-extensions
+
+      - name: Build MkDocs site
+        run: mkdocs build # Builds to ./site directory by default
+
+      - name: Deploy MkDocs to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          # Optional: Customize committer info
+          # user_name: 'github-actions[bot]'
+          # user_email: 'github-actions[bot]@users.noreply.github.com'

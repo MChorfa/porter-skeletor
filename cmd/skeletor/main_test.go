@@ -266,7 +266,8 @@ func TestBuildTemplateData_Validation(t *testing.T) {
 
 			// Provide dummy values for name, author, modulePath, outputDir as they are not under test here
 			// but are used internally by buildTemplateData to infer defaults if needed.
-			data, err := buildTemplateData(tc.config, "test-mixin", "test-author", "example.com/test", "test-output", tc.nonInteractive, tc.extraVars)
+			// Add a dummy complianceLevel ("basic") for the updated function signature.
+			data, err := buildTemplateData(tc.config, "test-mixin", "test-author", "example.com/test", "test-output", "basic", tc.nonInteractive, tc.extraVars)
 
 			if tc.expectErrorMsg != "" {
 				require.Error(t, err, "Expected an error but got none")

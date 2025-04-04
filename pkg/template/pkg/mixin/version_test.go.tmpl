@@ -30,7 +30,7 @@ func TestPrintVersion(t *testing.T) {
 
 	m := NewTestMixin(t)
 	// Set mixin name as it would be passed during generation
-	mixinName := "testmixin"
+	mixinName := "{{ .MixinName }}"
 
 	opts := version.Options{}
 	opts.RawFormat = string(printer.FormatPlaintext) // Use printer constant
@@ -64,7 +64,7 @@ func TestPrintJsonVersion(t *testing.T) {
 
 	m := NewTestMixin(t)
 	// Use the same consistent name as the other test for simplicity
-	mixinName := "testmixin"
+	mixinName := "{{ .MixinName }}"
 	m.ClientVersion = "v0.2.0" // Test with a client version set
 
 	opts := version.Options{}

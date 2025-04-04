@@ -170,3 +170,5 @@ func createCommand(name string, args ...string) *exec.Cmd {
 	// #nosec G204 -- Command is restricted by allow-list, args come from trusted template or user input
 	return exec.Command(name, args...)
 }
+
+// Removed duplicate buildTemplateData function. The correct one is in main.go.

@@ -2,33 +2,37 @@ package main
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 )
 
-// ValidateMixinName checks if the mixin name is valid
+// ValidateComplianceLevel checks if the provided compliance level is valid
+func ValidateComplianceLevel(level string) error {
+	validLevels := []string{"basic", "standard", "advanced"}
+	for _, valid := range validLevels {
+		if strings.ToLower(level) == valid {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid compliance level: %s (must be one of: %s)",
+		level, strings.Join(validLevels, ", "))
+}
+
+// ValidateMixinName checks if the provided mixin name is valid
 func ValidateMixinName(name string) error {
 	if name == "" {
 		return fmt.Errorf("mixin name cannot be empty")
 	}
 
-	// Check if name contains only lowercase letters, numbers, and hyphens
-	validName := regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
-	if !validName.MatchString(name) {
-		return fmt.Errorf("mixin name must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens")
+	// Check for valid characters (lowercase letters, numbers, and hyphens)
+	for _, char := range name {
+		if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') {
+			return fmt.Errorf("mixin name must contain only lowercase letters, numbers, and hyphens")
+		}
 	}
 
-	// Check if name is a reserved word
-	reservedWords := []string{
-		"porter", "mixin", "mixins", "bundle", "bundles", "installation", "installations",
-		"credential", "credentials", "parameter", "parameters", "claim", "claims",
-		"agent", "help", "version", "schema", "build", "install", "invoke", "upgrade", "uninstall",
-		// Add any other relevant reserved words
-	}
-	for _, reserved := range reservedWords {
-		if strings.ToLower(name) == reserved {
-			return fmt.Errorf("mixin name '%s' is a reserved word", name)
-		}
+	// Check that it doesn't start or end with a hyphen
+	if strings.HasPrefix(name, "-") || strings.HasSuffix(name, "-") {
+		return fmt.Errorf("mixin name cannot start or end with a hyphen")
 	}
 
 	return nil
