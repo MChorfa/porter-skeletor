@@ -1,0 +1,240 @@
+package security
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/go-playground/validator/v10"
+	"golang.org/x/time/rate"
+)
+
+// SecurityConfig holds security configuration
+type SecurityConfig struct {
+	// Input validation settings
+	InputValidation struct {
+		Enabled         bool `json:"enabled" yaml:"enabled"`
+		MaxInputLength  int  `json:"max_input_length" yaml:"max_input_length"`
+		AllowedPatterns []string `json:"allowed_patterns" yaml:"allowed_patterns"`
+	} `json:"input_validation" yaml:"input_validation"`
+
+	// Rate limiting settings
+	RateLimiting struct {
+		Enabled     bool          `json:"enabled" yaml:"enabled"`
+		RequestsPerSecond float64 `json:"requests_per_second" yaml:"requests_per_second"`
+		BurstSize   int           `json:"burst_size" yaml:"burst_size"`
+		WindowSize  time.Duration `json:"window_size" yaml:"window_size"`
+	} `json:"rate_limiting" yaml:"rate_limiting"`
+
+	// Secure headers settings
+	SecureHeaders struct {
+		Enabled bool `json:"enabled" yaml:"enabled"`
+		HSTS    struct {
+			Enabled           bool `json:"enabled" yaml:"enabled"`
+			MaxAge            int  `json:"max_age" yaml:"max_age"`
+			IncludeSubdomains bool `json:"include_subdomains" yaml:"include_subdomains"`
+		} `json:"hsts" yaml:"hsts"`
+		ContentSecurityPolicy string `json:"content_security_policy" yaml:"content_security_policy"`
+		XFrameOptions         string `json:"x_frame_options" yaml:"x_frame_options"`
+		XContentTypeOptions   string `json:"x_content_type_options" yaml:"x_content_type_options"`
+	} `json:"secure_headers" yaml:"secure_headers"`
+
+	// Vulnerability scanning settings
+	VulnerabilityScanning struct {
+		Enabled         bool     `json:"enabled" yaml:"enabled"`
+		ScanInterval    string   `json:"scan_interval" yaml:"scan_interval"`
+		ScanTargets     []string `json:"scan_targets" yaml:"scan_targets"`
+		FailOnCritical  bool     `json:"fail_on_critical" yaml:"fail_on_critical"`
+		FailOnHigh      bool     `json:"fail_on_high" yaml:"fail_on_high"`
+	} `json:"vulnerability_scanning" yaml:"vulnerability_scanning"`
+
+	// Policy enforcement settings
+	PolicyEnforcement struct {
+		Enabled     bool              `json:"enabled" yaml:"enabled"`
+		Policies    map[string]Policy `json:"policies" yaml:"policies"`
+		DefaultDeny bool              `json:"default_deny" yaml:"default_deny"`
+	} `json:"policy_enforcement" yaml:"policy_enforcement"`
+}
+
+// Policy represents a security policy
+type Policy struct {
+	Name        string            `json:"name" yaml:"name"`
+	Description string            `json:"description" yaml:"description"`
+	Rules       []Rule            `json:"rules" yaml:"rules"`
+	Actions     []string          `json:"actions" yaml:"actions"`
+	Metadata    map[string]string `json:"metadata" yaml:"metadata"`
+}
+
+// Rule represents a policy rule
+type Rule struct {
+	ID          string            `json:"id" yaml:"id"`
+	Description string            `json:"description" yaml:"description"`
+	Condition   string            `json:"condition" yaml:"condition"`
+	Severity    string            `json:"severity" yaml:"severity"`
+	Metadata    map[string]string `json:"metadata" yaml:"metadata"`
+}
+
+// SecurityManager manages security features
+type SecurityManager struct {
+	config    *SecurityConfig
+	validator *validator.Validate
+	limiter   *rate.Limiter
+}
+
+// NewSecurityManager creates a new security manager
+func NewSecurityManager(config *SecurityConfig) *SecurityManager {
+	sm := &SecurityManager{
+		config:    config,
+		validator: validator.New(),
+	}
+
+	// Initialize rate limiter if enabled
+	if config.RateLimiting.Enabled {
+		sm.limiter = rate.NewLimiter(
+			rate.Limit(config.RateLimiting.RequestsPerSecond),
+			config.RateLimiting.BurstSize,
+		)
+	}
+
+	return sm
+}
+
+// ValidateInput validates input according to security policies
+func (sm *SecurityManager) ValidateInput(ctx context.Context, input interface{}) error {
+	if !sm.config.InputValidation.Enabled {
+		return nil
+	}
+
+	// Use validator to validate struct tags
+	if err := sm.validator.StructCtx(ctx, input); err != nil {
+		return fmt.Errorf("input validation failed: %w", err)
+	}
+
+	// Additional custom validation logic can be added here
+	return nil
+}
+
+// CheckRateLimit checks if the request is within rate limits
+func (sm *SecurityManager) CheckRateLimit(ctx context.Context) error {
+	if !sm.config.RateLimiting.Enabled || sm.limiter == nil {
+		return nil
+	}
+
+	if !sm.limiter.Allow() {
+		return fmt.Errorf("rate limit exceeded")
+	}
+
+	return nil
+}
+
+// ApplySecureHeaders applies security headers to HTTP response
+func (sm *SecurityManager) ApplySecureHeaders(w http.ResponseWriter) {
+	if !sm.config.SecureHeaders.Enabled {
+		return
+	}
+
+	// HSTS Header
+	if sm.config.SecureHeaders.HSTS.Enabled {
+		hstsValue := fmt.Sprintf("max-age=%d", sm.config.SecureHeaders.HSTS.MaxAge)
+		if sm.config.SecureHeaders.HSTS.IncludeSubdomains {
+			hstsValue += "; includeSubDomains"
+		}
+		w.Header().Set("Strict-Transport-Security", hstsValue)
+	}
+
+	// Content Security Policy
+	if sm.config.SecureHeaders.ContentSecurityPolicy != "" {
+		w.Header().Set("Content-Security-Policy", sm.config.SecureHeaders.ContentSecurityPolicy)
+	}
+
+	// X-Frame-Options
+	if sm.config.SecureHeaders.XFrameOptions != "" {
+		w.Header().Set("X-Frame-Options", sm.config.SecureHeaders.XFrameOptions)
+	}
+
+	// X-Content-Type-Options
+	if sm.config.SecureHeaders.XContentTypeOptions != "" {
+		w.Header().Set("X-Content-Type-Options", sm.config.SecureHeaders.XContentTypeOptions)
+	}
+
+	// Additional security headers
+	w.Header().Set("X-XSS-Protection", "1; mode=block")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+}
+
+// EnforcePolicy enforces security policies
+func (sm *SecurityManager) EnforcePolicy(ctx context.Context, resource string, action string) error {
+	if !sm.config.PolicyEnforcement.Enabled {
+		return nil
+	}
+
+	// Check if there's a specific policy for this resource
+	for _, policy := range sm.config.PolicyEnforcement.Policies {
+		if sm.matchesPolicy(policy, resource, action) {
+			return sm.evaluatePolicy(ctx, policy, resource, action)
+		}
+	}
+
+	// Apply default deny if configured
+	if sm.config.PolicyEnforcement.DefaultDeny {
+		return fmt.Errorf("access denied by default policy for resource: %s, action: %s", resource, action)
+	}
+
+	return nil
+}
+
+// matchesPolicy checks if a policy applies to the given resource and action
+func (sm *SecurityManager) matchesPolicy(policy Policy, resource, action string) bool {
+	// Simple pattern matching - can be enhanced with regex or more sophisticated matching
+	for _, policyAction := range policy.Actions {
+		if policyAction == "*" || policyAction == action {
+			return true
+		}
+	}
+	return false
+}
+
+// evaluatePolicy evaluates a policy against the given context
+func (sm *SecurityManager) evaluatePolicy(ctx context.Context, policy Policy, resource, action string) error {
+	// Evaluate each rule in the policy
+	for _, rule := range policy.Rules {
+		if err := sm.evaluateRule(ctx, rule, resource, action); err != nil {
+			return fmt.Errorf("policy %s rule %s failed: %w", policy.Name, rule.ID, err)
+		}
+	}
+	return nil
+}
+
+// evaluateRule evaluates a single policy rule
+func (sm *SecurityManager) evaluateRule(ctx context.Context, rule Rule, resource, action string) error {
+	// Simple condition evaluation - can be enhanced with a proper expression evaluator
+	condition := strings.ReplaceAll(rule.Condition, "{resource}", resource)
+	condition = strings.ReplaceAll(condition, "{action}", action)
+
+	// For now, implement basic string matching
+	// In a real implementation, you'd use a proper expression evaluator
+	if strings.Contains(condition, "deny") {
+		return fmt.Errorf("rule %s denies access", rule.ID)
+	}
+
+	return nil
+}
+
+// GetSecurityMetrics returns security-related metrics
+func (sm *SecurityManager) GetSecurityMetrics() map[string]interface{} {
+	metrics := make(map[string]interface{})
+
+	metrics["input_validation_enabled"] = sm.config.InputValidation.Enabled
+	metrics["rate_limiting_enabled"] = sm.config.RateLimiting.Enabled
+	metrics["secure_headers_enabled"] = sm.config.SecureHeaders.Enabled
+	metrics["vulnerability_scanning_enabled"] = sm.config.VulnerabilityScanning.Enabled
+	metrics["policy_enforcement_enabled"] = sm.config.PolicyEnforcement.Enabled
+
+	if sm.config.RateLimiting.Enabled && sm.limiter != nil {
+		metrics["rate_limit_tokens"] = sm.limiter.Tokens()
+	}
+
+	return metrics
+}

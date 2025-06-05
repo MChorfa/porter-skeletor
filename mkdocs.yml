@@ -1,39 +1,79 @@
 # MkDocs configuration for the Porter Mixin Generator documentation site.
 site_name: Porter Mixin Generator (Skeletor)
-site_url: https://getporter.github.io/skeletor/ # Assuming this is the target URL
+site_description: Enterprise-grade command-line tool for generating Porter mixins with built-in security, compliance, authentication, and observability features.
+site_url: https://getporter.github.io/skeletor/
 repo_url: https://github.com/getporter/skeletor/
-edit_uri: edit/main/gh-pages-docs/ # Link to edit source files
+repo_name: getporter/skeletor
+edit_uri: edit/main/docs/
 
 theme:
   name: material
+  logo: assets/logo.png
+  favicon: assets/favicon.ico
   palette:
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
+      primary: blue
+      accent: blue
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
+      primary: blue
+      accent: blue
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
   features:
     - navigation.tabs
     - navigation.sections
-    - toc.integrate
+    - navigation.expand
+    - navigation.path
     - navigation.top
+    - navigation.tracking
+    - toc.integrate
     - search.suggest
     - search.highlight
+    - search.share
     - content.tabs.link
     - content.code.annotation
     - content.code.copy
+    - content.action.edit
+    - content.action.view
+    - announce.dismiss
 
 # Define the navigation structure
 nav:
   - Home: index.md
-  # Add other pages as needed, e.g., linking to CONTRIBUTING.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: quick-start.md
+    - Basic Usage: basic-usage.md
+  - Enterprise Features:
+    - Overview: enterprise-features.md
+    - Security Features: security-features.md
+    - Compliance Frameworks: compliance-frameworks.md
+    - Authentication & Authorization: auth-features.md
+    - Enhanced Observability: observability-features.md
+  - Reference:
+    - Command Reference: command-reference.md
+    - Template Variables: template-variables.md
+    - Configuration Files: configuration-files.md
+  - Advanced:
+    - Template Customization: template-customization.md
+    - Custom Templates: custom-templates.md
+    - CI/CD Integration: cicd-integration.md
+  - Examples:
+    - Basic Examples: examples.md
+    - Enterprise Examples: enterprise-examples.md
+    - Real-world Use Cases: use-cases.md
+  - Contributing:
+    - Contributing Guide: contributing.md
+    - Development Setup: development.md
+    - Release Process: release-process.md
 
 # Markdown extensions
 markdown_extensions:

@@ -1,0 +1,331 @@
+# Observability Configuration for {{ .MixinName }} Mixin
+# This file configures enterprise observability and monitoring features
+
+observability:
+  enabled: {{ .EnableObservability }}
+
+  # Application Performance Monitoring (APM)
+  apm:
+    enabled: {{ if hasFeature .ObservabilityFeatures "apm" }}true{{ else }}false{{ end }}
+    provider: "datadog"  # Options: datadog, newrelic, elastic, jaeger
+    config:
+      datadog:
+        api_key: "${DATADOG_API_KEY}"
+        app_key: "${DATADOG_APP_KEY}"
+        site: "datadoghq.com"
+        service: "{{ .MixinName }}"
+        env: "${ENVIRONMENT:-development}"
+        version: "{{ .Version | default "0.1.0" }}"
+      newrelic:
+        license_key: "${NEWRELIC_LICENSE_KEY}"
+        app_name: "{{ .MixinName }}"
+      elastic:
+        server_url: "http://apm-server:8200"
+        service_name: "{{ .MixinName }}"
+        environment: "${ENVIRONMENT:-development}"
+
+  # Infrastructure Monitoring
+  infrastructure:
+    enabled: {{ if hasFeature .ObservabilityFeatures "infrastructure" }}true{{ else }}false{{ end }}
+    collectors:
+      - "cpu"
+      - "memory"
+      - "disk"
+      - "network"
+      - "process"
+    interval: "30s"
+    config:
+      cpu:
+        per_cpu: true
+        total_cpu: true
+      memory:
+        include_swap: true
+      disk:
+        mount_points: ["/", "/var", "/tmp"]
+      network:
+        interfaces: ["eth0", "lo"]
+
+  # Custom Metrics
+  custom_metrics:
+    enabled: {{ if hasFeature .ObservabilityFeatures "custom_metrics" }}true{{ else }}false{{ end }}
+    metrics:
+      mixin_operations_total:
+        name: "{{ .MixinName }}_operations_total"
+        type: "counter"
+        description: "Total number of mixin operations"
+        labels: ["operation", "status", "user"]
+        
+      mixin_operation_duration:
+        name: "{{ .MixinName }}_operation_duration_seconds"
+        type: "histogram"
+        description: "Duration of mixin operations in seconds"
+        labels: ["operation", "status"]
+        buckets: [0.1, 0.5, 1.0, 2.5, 5.0, 10.0]
+        
+      mixin_active_deployments:
+        name: "{{ .MixinName }}_active_deployments"
+        type: "gauge"
+        description: "Number of active deployments"
+        labels: ["environment", "namespace"]
+        
+      mixin_error_rate:
+        name: "{{ .MixinName }}_error_rate"
+        type: "summary"
+        description: "Error rate for mixin operations"
+        labels: ["operation"]
+        objectives:
+          0.5: 0.05
+          0.9: 0.01
+          0.99: 0.001
+
+  # Health Checks
+  health_checks:
+    enabled: {{ if hasFeature .ObservabilityFeatures "health_checks" }}true{{ else }}false{{ end }}
+    endpoint: "/health"
+    interval: "30s"
+    timeout: "10s"
+    checks:
+      database:
+        name: "Database Connection"
+        type: "tcp"
+        target: "database:5432"
+        timeout: "5s"
+        interval: "30s"
+        retries: 3
+        
+      external_api:
+        name: "External API"
+        type: "http"
+        target: "https://api.external.com/health"
+        timeout: "10s"
+        interval: "60s"
+        retries: 2
+        config:
+          expected_status: "200"
+          
+      disk_space:
+        name: "Disk Space"
+        type: "exec"
+        target: "df -h / | awk 'NR==2 {print $5}' | sed 's/%//'"
+        timeout: "5s"
+        interval: "300s"
+        retries: 1
+        config:
+          threshold: "90"
+
+  # OpenTelemetry Configuration
+  opentelemetry:
+    enabled: {{ if hasFeature .ObservabilityFeatures "opentelemetry" }}true{{ else }}false{{ end }}
+    service_name: "{{ .MixinName }}"
+    
+    exporters:
+      jaeger:
+        type: "jaeger"
+        endpoint: "http://jaeger:14268/api/traces"
+        headers: {}
+        config:
+          timeout: "30s"
+          
+      otlp:
+        type: "otlp"
+        endpoint: "http://otel-collector:4317"
+        headers:
+          authorization: "Bearer ${OTEL_AUTH_TOKEN}"
+        config:
+          compression: "gzip"
+          timeout: "10s"
+          
+      prometheus:
+        type: "prometheus"
+        endpoint: "http://prometheus:9090/api/v1/write"
+        headers: {}
+        config:
+          namespace: "{{ .MixinName }}"
+
+    sampling:
+      type: "ratio"  # Options: always, never, ratio, rate_limiting
+      value: 0.1     # Sample 10% of traces
+
+    resource:
+      attributes:
+        service.name: "{{ .MixinName }}"
+        service.version: "{{ .Version | default "0.1.0" }}"
+        service.namespace: "{{ .ModulePath }}"
+        deployment.environment: "${ENVIRONMENT:-development}"
+
+  # Audit Logging
+  audit_logging:
+    enabled: {{ if hasFeature .ObservabilityFeatures "audit_logging" }}true{{ else }}false{{ end }}
+    format: "json"
+    level: "info"
+    output: "file"
+    file: "/var/log/{{ .MixinName }}/audit.log"
+    max_size: 100    # MB
+    max_backups: 10
+    max_age: 30      # days
+    compress: true
+    fields:
+      service: "{{ .MixinName }}"
+      version: "{{ .Version | default "0.1.0" }}"
+      environment: "${ENVIRONMENT:-development}"
+
+  # Distributed Tracing
+  tracing:
+    enabled: {{ if hasFeature .ObservabilityFeatures "tracing" }}true{{ else }}false{{ end }}
+    backend: "jaeger"  # Options: jaeger, zipkin, datadog
+    endpoint: "http://jaeger:14268/api/traces"
+    sample_rate: 0.1
+    config:
+      jaeger:
+        agent_host: "jaeger"
+        agent_port: 6831
+        collector_endpoint: "http://jaeger:14268/api/traces"
+        username: ""
+        password: ""
+      zipkin:
+        endpoint: "http://zipkin:9411/api/v2/spans"
+        timeout: "5s"
+      datadog:
+        agent_host: "datadog-agent"
+        agent_port: 8126
+        service: "{{ .MixinName }}"
+        env: "${ENVIRONMENT:-development}"
+
+# Monitoring and Alerting
+monitoring:
+  # Prometheus configuration
+  prometheus:
+    enabled: true
+    scrape_interval: "15s"
+    evaluation_interval: "15s"
+    external_labels:
+      cluster: "{{ .MixinName }}-cluster"
+      environment: "${ENVIRONMENT:-development}"
+    
+    scrape_configs:
+      - job_name: "{{ .MixinName }}"
+        static_configs:
+          - targets: ["localhost:8080"]
+        metrics_path: "/metrics"
+        scrape_interval: "15s"
+
+  # Grafana configuration
+  grafana:
+    enabled: true
+    admin_user: "admin"
+    admin_password: "${GRAFANA_ADMIN_PASSWORD}"
+    datasources:
+      - name: "Prometheus"
+        type: "prometheus"
+        url: "http://prometheus:9090"
+        access: "proxy"
+        is_default: true
+    dashboards:
+      - "{{ .MixinName }}-overview"
+      - "{{ .MixinName }}-performance"
+      - "{{ .MixinName }}-errors"
+
+  # Alerting rules
+  alerting:
+    enabled: true
+    rules:
+      - alert: "{{ .MixinName }}HighErrorRate"
+        expr: "rate({{ .MixinName }}_operations_total{status=\"error\"}[5m]) > 0.1"
+        for: "2m"
+        labels:
+          severity: "warning"
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ "{{ $value }}" }} errors per second"
+          
+      - alert: "{{ .MixinName }}HighLatency"
+        expr: "histogram_quantile(0.95, rate({{ .MixinName }}_operation_duration_seconds_bucket[5m])) > 5"
+        for: "5m"
+        labels:
+          severity: "warning"
+        annotations:
+          summary: "High latency detected"
+          description: "95th percentile latency is {{ "{{ $value }}" }} seconds"
+          
+      - alert: "{{ .MixinName }}ServiceDown"
+        expr: "up{job=\"{{ .MixinName }}\"} == 0"
+        for: "1m"
+        labels:
+          severity: "critical"
+        annotations:
+          summary: "Service is down"
+          description: "{{ .MixinName }} service has been down for more than 1 minute"
+
+# Log Management
+logging:
+  # Structured logging configuration
+  structured:
+    enabled: true
+    format: "json"
+    level: "info"
+    fields:
+      service: "{{ .MixinName }}"
+      version: "{{ .Version | default "0.1.0" }}"
+      
+  # Log aggregation
+  aggregation:
+    enabled: true
+    backend: "elasticsearch"  # Options: elasticsearch, loki, splunk
+    config:
+      elasticsearch:
+        hosts: ["http://elasticsearch:9200"]
+        index: "{{ .MixinName }}-logs"
+        username: "${ELASTICSEARCH_USERNAME}"
+        password: "${ELASTICSEARCH_PASSWORD}"
+      loki:
+        url: "http://loki:3100"
+        tenant_id: "{{ .MixinName }}"
+      splunk:
+        url: "https://splunk:8088"
+        token: "${SPLUNK_HEC_TOKEN}"
+        index: "{{ .MixinName }}"
+
+# Integration settings
+integrations:
+  # External monitoring services
+  external_services:
+    pagerduty:
+      enabled: false
+      integration_key: "${PAGERDUTY_INTEGRATION_KEY}"
+      
+    slack:
+      enabled: false
+      webhook_url: "${SLACK_WEBHOOK_URL}"
+      channel: "#alerts"
+      
+    email:
+      enabled: true
+      smtp_host: "smtp.{{ .AuthorEmail | default "example.com" }}"
+      smtp_port: 587
+      username: "${SMTP_USERNAME}"
+      password: "${SMTP_PASSWORD}"
+      from: "alerts@{{ .AuthorEmail | default "example.com" }}"
+      to: ["ops@{{ .AuthorEmail | default "example.com" }}"]
+
+  # Cloud provider integrations
+  cloud_providers:
+    aws:
+      enabled: false
+      region: "us-west-2"
+      cloudwatch:
+        enabled: false
+        namespace: "{{ .MixinName }}"
+      x_ray:
+        enabled: false
+        
+    azure:
+      enabled: false
+      application_insights:
+        enabled: false
+        instrumentation_key: "${AZURE_INSTRUMENTATION_KEY}"
+        
+    gcp:
+      enabled: false
+      project_id: "${GCP_PROJECT_ID}"
+      stackdriver:
+        enabled: false

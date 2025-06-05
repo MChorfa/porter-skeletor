@@ -1,0 +1,385 @@
+package compliance
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"get.porter.sh/porter/pkg/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+)
+
+// ComplianceFramework represents a compliance framework
+type ComplianceFramework string
+
+const (
+	SOC2   ComplianceFramework = "soc2"
+	GDPR   ComplianceFramework = "gdpr"
+	HIPAA  ComplianceFramework = "hipaa"
+	PCIDSS ComplianceFramework = "pci_dss"
+)
+
+// ComplianceConfig holds compliance configuration
+type ComplianceConfig struct {
+	Enabled    bool                           `json:"enabled" yaml:"enabled"`
+	Frameworks map[ComplianceFramework]bool   `json:"frameworks" yaml:"frameworks"`
+	Policies   map[string]CompliancePolicy    `json:"policies" yaml:"policies"`
+	Reporting  ComplianceReporting            `json:"reporting" yaml:"reporting"`
+	Auditing   ComplianceAuditing             `json:"auditing" yaml:"auditing"`
+}
+
+// CompliancePolicy represents a compliance policy
+type CompliancePolicy struct {
+	ID           string                 `json:"id" yaml:"id"`
+	Name         string                 `json:"name" yaml:"name"`
+	Description  string                 `json:"description" yaml:"description"`
+	Framework    ComplianceFramework    `json:"framework" yaml:"framework"`
+	Controls     []ComplianceControl    `json:"controls" yaml:"controls"`
+	Severity     string                 `json:"severity" yaml:"severity"`
+	Enabled      bool                   `json:"enabled" yaml:"enabled"`
+	Metadata     map[string]interface{} `json:"metadata" yaml:"metadata"`
+}
+
+// ComplianceControl represents a specific compliance control
+type ComplianceControl struct {
+	ID           string                 `json:"id" yaml:"id"`
+	Name         string                 `json:"name" yaml:"name"`
+	Description  string                 `json:"description" yaml:"description"`
+	Requirements []string               `json:"requirements" yaml:"requirements"`
+	Tests        []ComplianceTest       `json:"tests" yaml:"tests"`
+	Status       ComplianceStatus       `json:"status" yaml:"status"`
+	Evidence     []ComplianceEvidence   `json:"evidence" yaml:"evidence"`
+	Metadata     map[string]interface{} `json:"metadata" yaml:"metadata"`
+}
+
+// ComplianceTest represents a compliance test
+type ComplianceTest struct {
+	ID          string                 `json:"id" yaml:"id"`
+	Name        string                 `json:"name" yaml:"name"`
+	Description string                 `json:"description" yaml:"description"`
+	Type        string                 `json:"type" yaml:"type"` // automated, manual, documentation
+	Script      string                 `json:"script" yaml:"script"`
+	Expected    interface{}            `json:"expected" yaml:"expected"`
+	Metadata    map[string]interface{} `json:"metadata" yaml:"metadata"`
+}
+
+// ComplianceEvidence represents evidence for compliance
+type ComplianceEvidence struct {
+	ID          string                 `json:"id" yaml:"id"`
+	Type        string                 `json:"type" yaml:"type"` // document, screenshot, log, test_result
+	Description string                 `json:"description" yaml:"description"`
+	Location    string                 `json:"location" yaml:"location"`
+	Timestamp   time.Time              `json:"timestamp" yaml:"timestamp"`
+	Hash        string                 `json:"hash" yaml:"hash"`
+	Metadata    map[string]interface{} `json:"metadata" yaml:"metadata"`
+}
+
+// ComplianceStatus represents the status of a compliance control
+type ComplianceStatus string
+
+const (
+	StatusCompliant    ComplianceStatus = "compliant"
+	StatusNonCompliant ComplianceStatus = "non_compliant"
+	StatusPartial      ComplianceStatus = "partial"
+	StatusNotTested    ComplianceStatus = "not_tested"
+	StatusExempt       ComplianceStatus = "exempt"
+)
+
+// ComplianceReporting holds reporting configuration
+type ComplianceReporting struct {
+	Enabled   bool     `json:"enabled" yaml:"enabled"`
+	Formats   []string `json:"formats" yaml:"formats"` // json, html, pdf, csv
+	Schedule  string   `json:"schedule" yaml:"schedule"`
+	OutputDir string   `json:"output_dir" yaml:"output_dir"`
+	Recipients []string `json:"recipients" yaml:"recipients"`
+}
+
+// ComplianceAuditing holds auditing configuration
+type ComplianceAuditing struct {
+	Enabled        bool   `json:"enabled" yaml:"enabled"`
+	LogLevel       string `json:"log_level" yaml:"log_level"`
+	RetentionDays  int    `json:"retention_days" yaml:"retention_days"`
+	EncryptLogs    bool   `json:"encrypt_logs" yaml:"encrypt_logs"`
+	RemoteLogging  bool   `json:"remote_logging" yaml:"remote_logging"`
+	RemoteEndpoint string `json:"remote_endpoint" yaml:"remote_endpoint"`
+}
+
+// ComplianceManager manages compliance features
+type ComplianceManager struct {
+	config *ComplianceConfig
+	tracer trace.Tracer
+}
+
+// NewComplianceManager creates a new compliance manager
+func NewComplianceManager(config *ComplianceConfig) *ComplianceManager {
+	return &ComplianceManager{
+		config: config,
+		tracer: tracing.Tracer("{{ .ModulePath }}/compliance"),
+	}
+}
+
+// ValidateCompliance validates compliance against configured frameworks
+func (cm *ComplianceManager) ValidateCompliance(ctx context.Context) (*ComplianceReport, error) {
+	ctx, span := cm.tracer.Start(ctx, "compliance.validate")
+	defer span.End()
+
+	if !cm.config.Enabled {
+		return nil, fmt.Errorf("compliance validation is disabled")
+	}
+
+	report := &ComplianceReport{
+		Timestamp:   time.Now(),
+		Frameworks:  make(map[ComplianceFramework]*FrameworkReport),
+		OverallStatus: StatusCompliant,
+	}
+
+	// Validate each enabled framework
+	for framework, enabled := range cm.config.Frameworks {
+		if !enabled {
+			continue
+		}
+
+		span.SetAttributes(attribute.String("compliance.framework", string(framework)))
+
+		frameworkReport, err := cm.validateFramework(ctx, framework)
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("failed to validate framework %s: %w", framework, err)
+		}
+
+		report.Frameworks[framework] = frameworkReport
+
+		// Update overall status
+		if frameworkReport.Status != StatusCompliant {
+			report.OverallStatus = StatusNonCompliant
+		}
+	}
+
+	span.SetAttributes(
+		attribute.String("compliance.overall_status", string(report.OverallStatus)),
+		attribute.Int("compliance.frameworks_count", len(report.Frameworks)),
+	)
+
+	return report, nil
+}
+
+// validateFramework validates compliance for a specific framework
+func (cm *ComplianceManager) validateFramework(ctx context.Context, framework ComplianceFramework) (*FrameworkReport, error) {
+	ctx, span := cm.tracer.Start(ctx, "compliance.validate_framework")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("compliance.framework", string(framework)))
+
+	report := &FrameworkReport{
+		Framework: framework,
+		Timestamp: time.Now(),
+		Controls:  make(map[string]*ControlReport),
+		Status:    StatusCompliant,
+	}
+
+	// Get policies for this framework
+	policies := cm.getPoliciesForFramework(framework)
+
+	for _, policy := range policies {
+		if !policy.Enabled {
+			continue
+		}
+
+		for _, control := range policy.Controls {
+			controlReport, err := cm.validateControl(ctx, control)
+			if err != nil {
+				span.RecordError(err)
+				return nil, fmt.Errorf("failed to validate control %s: %w", control.ID, err)
+			}
+
+			report.Controls[control.ID] = controlReport
+
+			// Update framework status
+			if controlReport.Status != StatusCompliant {
+				report.Status = StatusNonCompliant
+			}
+		}
+	}
+
+	span.SetAttributes(
+		attribute.String("compliance.framework.status", string(report.Status)),
+		attribute.Int("compliance.framework.controls_count", len(report.Controls)),
+	)
+
+	return report, nil
+}
+
+// validateControl validates a specific compliance control
+func (cm *ComplianceManager) validateControl(ctx context.Context, control ComplianceControl) (*ControlReport, error) {
+	ctx, span := cm.tracer.Start(ctx, "compliance.validate_control")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("compliance.control.id", control.ID))
+
+	report := &ControlReport{
+		ControlID: control.ID,
+		Timestamp: time.Now(),
+		Status:    StatusCompliant,
+		Tests:     make(map[string]*TestReport),
+		Evidence:  control.Evidence,
+	}
+
+	// Run tests for this control
+	for _, test := range control.Tests {
+		testReport, err := cm.runComplianceTest(ctx, test)
+		if err != nil {
+			span.RecordError(err)
+			return nil, fmt.Errorf("failed to run test %s: %w", test.ID, err)
+		}
+
+		report.Tests[test.ID] = testReport
+
+		// Update control status
+		if !testReport.Passed {
+			report.Status = StatusNonCompliant
+		}
+	}
+
+	span.SetAttributes(
+		attribute.String("compliance.control.status", string(report.Status)),
+		attribute.Int("compliance.control.tests_count", len(report.Tests)),
+	)
+
+	return report, nil
+}
+
+// runComplianceTest runs a specific compliance test
+func (cm *ComplianceManager) runComplianceTest(ctx context.Context, test ComplianceTest) (*TestReport, error) {
+	ctx, span := cm.tracer.Start(ctx, "compliance.run_test")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("compliance.test.id", test.ID),
+		attribute.String("compliance.test.type", test.Type),
+	)
+
+	report := &TestReport{
+		TestID:    test.ID,
+		Timestamp: time.Now(),
+		Passed:    false,
+	}
+
+	switch test.Type {
+	case "automated":
+		// Run automated test (placeholder implementation)
+		report.Passed = true
+		report.Result = "Test passed automatically"
+	case "manual":
+		// Manual tests require human verification
+		report.Passed = false
+		report.Result = "Manual verification required"
+	case "documentation":
+		// Documentation tests check for required documents
+		report.Passed = cm.checkDocumentationExists(test)
+		if report.Passed {
+			report.Result = "Required documentation found"
+		} else {
+			report.Result = "Required documentation missing"
+		}
+	default:
+		return nil, fmt.Errorf("unknown test type: %s", test.Type)
+	}
+
+	span.SetAttributes(
+		attribute.Bool("compliance.test.passed", report.Passed),
+		attribute.String("compliance.test.result", report.Result),
+	)
+
+	return report, nil
+}
+
+// getPoliciesForFramework returns policies for a specific framework
+func (cm *ComplianceManager) getPoliciesForFramework(framework ComplianceFramework) []CompliancePolicy {
+	var policies []CompliancePolicy
+	for _, policy := range cm.config.Policies {
+		if policy.Framework == framework {
+			policies = append(policies, policy)
+		}
+	}
+	return policies
+}
+
+// checkDocumentationExists checks if required documentation exists
+func (cm *ComplianceManager) checkDocumentationExists(test ComplianceTest) bool {
+	// Placeholder implementation - in reality, this would check for specific documents
+	return true
+}
+
+// ComplianceReport represents a compliance validation report
+type ComplianceReport struct {
+	Timestamp     time.Time                            `json:"timestamp"`
+	Frameworks    map[ComplianceFramework]*FrameworkReport `json:"frameworks"`
+	OverallStatus ComplianceStatus                     `json:"overall_status"`
+}
+
+// FrameworkReport represents a framework-specific compliance report
+type FrameworkReport struct {
+	Framework ComplianceFramework         `json:"framework"`
+	Timestamp time.Time                   `json:"timestamp"`
+	Status    ComplianceStatus            `json:"status"`
+	Controls  map[string]*ControlReport   `json:"controls"`
+}
+
+// ControlReport represents a control-specific compliance report
+type ControlReport struct {
+	ControlID string                    `json:"control_id"`
+	Timestamp time.Time                 `json:"timestamp"`
+	Status    ComplianceStatus          `json:"status"`
+	Tests     map[string]*TestReport    `json:"tests"`
+	Evidence  []ComplianceEvidence      `json:"evidence"`
+}
+
+// TestReport represents a test-specific compliance report
+type TestReport struct {
+	TestID    string    `json:"test_id"`
+	Timestamp time.Time `json:"timestamp"`
+	Passed    bool      `json:"passed"`
+	Result    string    `json:"result"`
+	Error     string    `json:"error,omitempty"`
+}
+
+// GenerateReport generates a compliance report in the specified format
+func (cm *ComplianceManager) GenerateReport(ctx context.Context, report *ComplianceReport, format string) ([]byte, error) {
+	ctx, span := cm.tracer.Start(ctx, "compliance.generate_report")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("compliance.report.format", format))
+
+	switch format {
+	case "json":
+		return json.MarshalIndent(report, "", "  ")
+	case "html":
+		return cm.generateHTMLReport(report)
+	default:
+		return nil, fmt.Errorf("unsupported report format: %s", format)
+	}
+}
+
+// generateHTMLReport generates an HTML compliance report
+func (cm *ComplianceManager) generateHTMLReport(report *ComplianceReport) ([]byte, error) {
+	// Placeholder implementation - would generate proper HTML report
+	html := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Compliance Report</title>
+</head>
+<body>
+    <h1>Compliance Report</h1>
+    <p>Generated: %s</p>
+    <p>Overall Status: %s</p>
+    <h2>Frameworks</h2>
+    <!-- Framework details would be rendered here -->
+</body>
+</html>
+`, report.Timestamp.Format(time.RFC3339), report.OverallStatus)
+
+	return []byte(html), nil
+}

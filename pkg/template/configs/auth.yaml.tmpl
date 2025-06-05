@@ -1,0 +1,321 @@
+# Authentication and Authorization Configuration for {{ .MixinName }} Mixin
+# This file configures enterprise authentication and authorization features
+
+auth:
+  enabled: {{ .EnableAuth }}
+
+  # RBAC (Role-Based Access Control) configuration
+  rbac:
+    enabled: {{ if hasFeature .AuthFeatures "rbac" }}true{{ else }}false{{ end }}
+    
+    # Predefined roles
+    roles:
+      admin:
+        id: "admin"
+        name: "Administrator"
+        description: "Full system access"
+        permissions:
+          - "system:*"
+          - "user:*"
+          - "config:*"
+          - "audit:*"
+        inherits: []
+        metadata:
+          level: "high"
+          
+      operator:
+        id: "operator"
+        name: "Operator"
+        description: "Operational access to manage deployments"
+        permissions:
+          - "deployment:create"
+          - "deployment:read"
+          - "deployment:update"
+          - "deployment:delete"
+          - "bundle:read"
+          - "credential:read"
+        inherits: ["viewer"]
+        metadata:
+          level: "medium"
+          
+      developer:
+        id: "developer"
+        name: "Developer"
+        description: "Development access to create and test bundles"
+        permissions:
+          - "bundle:create"
+          - "bundle:read"
+          - "bundle:update"
+          - "bundle:test"
+          - "credential:read"
+        inherits: ["viewer"]
+        metadata:
+          level: "medium"
+          
+      viewer:
+        id: "viewer"
+        name: "Viewer"
+        description: "Read-only access"
+        permissions:
+          - "deployment:read"
+          - "bundle:read"
+          - "status:read"
+        inherits: []
+        metadata:
+          level: "low"
+
+    # System permissions
+    permissions:
+      system_admin:
+        id: "system:*"
+        name: "System Administration"
+        description: "Full system administration access"
+        resource: "system"
+        action: "*"
+        conditions: []
+        
+      user_management:
+        id: "user:*"
+        name: "User Management"
+        description: "Full user management access"
+        resource: "user"
+        action: "*"
+        conditions: []
+        
+      deployment_create:
+        id: "deployment:create"
+        name: "Create Deployment"
+        description: "Create new deployments"
+        resource: "deployment"
+        action: "create"
+        conditions: []
+        
+      deployment_read:
+        id: "deployment:read"
+        name: "Read Deployment"
+        description: "View deployment information"
+        resource: "deployment"
+        action: "read"
+        conditions: []
+        
+      bundle_create:
+        id: "bundle:create"
+        name: "Create Bundle"
+        description: "Create new bundles"
+        resource: "bundle"
+        action: "create"
+        conditions: []
+
+    # Access control policies
+    policies:
+      admin_policy:
+        id: "admin_policy"
+        name: "Administrator Policy"
+        description: "Full access for administrators"
+        effect: "allow"
+        rules:
+          - id: "admin_rule"
+            subject: "admin"
+            resource: "*"
+            action: "*"
+            conditions: []
+            
+      time_based_access:
+        id: "time_based_access"
+        name: "Time-Based Access Policy"
+        description: "Restrict access during off-hours"
+        effect: "deny"
+        rules:
+          - id: "off_hours_rule"
+            subject: "*"
+            resource: "deployment"
+            action: "create"
+            conditions:
+              - "time.hour < 8 OR time.hour > 18"
+              - "time.weekday IN ['saturday', 'sunday']"
+
+    # Session management
+    sessions:
+      enabled: {{ if hasFeature .AuthFeatures "session_management" }}true{{ else }}false{{ end }}
+      timeout: "8h"
+      max_sessions: 5
+      secure_cookies: true
+      same_site: "strict"
+      refresh_enabled: true
+
+  # LDAP integration
+  ldap:
+    enabled: {{ if hasFeature .AuthFeatures "ldap" }}true{{ else }}false{{ end }}
+    server: "ldap://ldap.{{ .AuthorEmail | default "example.com" }}:389"
+    bind_dn: "cn=admin,dc=example,dc=com"
+    bind_password: "${LDAP_BIND_PASSWORD}"
+    base_dn: "dc=example,dc=com"
+    user_filter: "(uid=%s)"
+    group_filter: "(memberUid=%s)"
+    attributes:
+      username: "uid"
+      email: "mail"
+      first_name: "givenName"
+      last_name: "sn"
+      groups: "memberOf"
+    tls:
+      enabled: true
+      skip_verify: false
+      ca_cert_file: "/etc/ssl/certs/ldap-ca.pem"
+
+  # SSO (Single Sign-On) configuration
+  sso:
+    enabled: {{ if hasFeature .AuthFeatures "sso" }}true{{ else }}false{{ end }}
+    
+    # SAML configuration
+    saml:
+      enabled: true
+      entity_id: "{{ .ModulePath }}"
+      acs_url: "https://{{ .MixinName }}.{{ .AuthorEmail | default "example.com" }}/auth/saml/acs"
+      sls_url: "https://{{ .MixinName }}.{{ .AuthorEmail | default "example.com" }}/auth/saml/sls"
+      metadata_url: "https://{{ .MixinName }}.{{ .AuthorEmail | default "example.com" }}/auth/saml/metadata"
+      idp_metadata_url: "https://idp.{{ .AuthorEmail | default "example.com" }}/metadata"
+      certificate_file: "/etc/ssl/certs/saml.pem"
+      private_key_file: "/etc/ssl/private/saml.key"
+      
+    # OAuth 2.0 / OpenID Connect configuration
+    oidc:
+      enabled: true
+      issuer: "https://auth.{{ .AuthorEmail | default "example.com" }}"
+      client_id: "${OIDC_CLIENT_ID}"
+      client_secret: "${OIDC_CLIENT_SECRET}"
+      redirect_url: "https://{{ .MixinName }}.{{ .AuthorEmail | default "example.com" }}/auth/oidc/callback"
+      scopes: ["openid", "profile", "email", "groups"]
+      claims_mapping:
+        username: "preferred_username"
+        email: "email"
+        first_name: "given_name"
+        last_name: "family_name"
+        groups: "groups"
+
+  # Multi-Factor Authentication (MFA)
+  mfa:
+    enabled: {{ if hasFeature .AuthFeatures "mfa" }}true{{ else }}false{{ end }}
+    required_for_roles: ["admin", "operator"]
+    providers:
+      totp:
+        enabled: true
+        issuer: "{{ .MixinName }}"
+        algorithm: "SHA1"
+        digits: 6
+        period: 30
+      sms:
+        enabled: false
+        provider: "twilio"
+        config:
+          account_sid: "${TWILIO_ACCOUNT_SID}"
+          auth_token: "${TWILIO_AUTH_TOKEN}"
+          from_number: "${TWILIO_FROM_NUMBER}"
+      email:
+        enabled: true
+        smtp:
+          host: "smtp.{{ .AuthorEmail | default "example.com" }}"
+          port: 587
+          username: "${SMTP_USERNAME}"
+          password: "${SMTP_PASSWORD}"
+          from: "noreply@{{ .AuthorEmail | default "example.com" }}"
+
+  # HashiCorp Vault integration
+  vault:
+    enabled: {{ if hasFeature .AuthFeatures "vault" }}true{{ else }}false{{ end }}
+    address: "https://vault.{{ .AuthorEmail | default "example.com" }}:8200"
+    auth_method: "kubernetes"  # Options: token, kubernetes, ldap, userpass
+    config:
+      kubernetes:
+        role: "{{ .MixinName }}-role"
+        service_account_token_path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      token:
+        token: "${VAULT_TOKEN}"
+      ldap:
+        username: "${VAULT_LDAP_USERNAME}"
+        password: "${VAULT_LDAP_PASSWORD}"
+    secrets:
+      kv_mount: "secret"
+      database_mount: "database"
+      pki_mount: "pki"
+    policies:
+      - "{{ .MixinName }}-policy"
+    tls:
+      ca_cert_file: "/etc/ssl/certs/vault-ca.pem"
+      skip_verify: false
+
+# Authentication middleware configuration
+middleware:
+  authentication:
+    enabled: true
+    skip_paths:
+      - "/health"
+      - "/metrics"
+      - "/version"
+    jwt:
+      enabled: true
+      secret: "${JWT_SECRET}"
+      algorithm: "HS256"
+      expiration: "24h"
+      refresh_expiration: "168h"  # 7 days
+      
+  authorization:
+    enabled: true
+    default_deny: false
+    cache_ttl: "5m"
+    
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 60
+    burst_size: 100
+    
+# Audit logging for authentication events
+audit:
+  enabled: true
+  events:
+    - "login_success"
+    - "login_failure"
+    - "logout"
+    - "permission_denied"
+    - "role_assigned"
+    - "role_removed"
+    - "mfa_enabled"
+    - "mfa_disabled"
+    - "password_changed"
+  retention_days: 365
+  format: "json"
+  output: "file"  # Options: file, syslog, elasticsearch
+  file_path: "/var/log/{{ .MixinName }}/auth-audit.log"
+
+# Integration settings
+integrations:
+  # Identity provider integrations
+  identity_providers:
+    active_directory:
+      enabled: false
+      domain: "{{ .AuthorEmail | default "example.com" }}"
+      server: "ad.{{ .AuthorEmail | default "example.com" }}"
+      port: 389
+      
+    okta:
+      enabled: false
+      domain: "{{ .AuthorEmail | default "example" }}.okta.com"
+      api_token: "${OKTA_API_TOKEN}"
+      
+    auth0:
+      enabled: false
+      domain: "{{ .AuthorEmail | default "example" }}.auth0.com"
+      client_id: "${AUTH0_CLIENT_ID}"
+      client_secret: "${AUTH0_CLIENT_SECRET}"
+
+  # External authorization services
+  external_authz:
+    opa:
+      enabled: false
+      endpoint: "http://opa:8181/v1/data/authz/allow"
+      timeout: "5s"
+      
+    casbin:
+      enabled: false
+      model_file: "/etc/casbin/model.conf"
+      policy_file: "/etc/casbin/policy.csv"

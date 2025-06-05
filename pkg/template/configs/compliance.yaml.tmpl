@@ -1,0 +1,273 @@
+# Compliance Configuration for {{ .MixinName }} Mixin
+# This file configures enterprise compliance frameworks
+
+compliance:
+  enabled: {{ .EnableCompliance }}
+  
+  # Enabled compliance frameworks
+  frameworks:
+    soc2: {{ if hasFeature .ComplianceFrameworks "soc2" }}true{{ else }}false{{ end }}
+    gdpr: {{ if hasFeature .ComplianceFrameworks "gdpr" }}true{{ else }}false{{ end }}
+    hipaa: {{ if hasFeature .ComplianceFrameworks "hipaa" }}true{{ else }}false{{ end }}
+    pci_dss: {{ if hasFeature .ComplianceFrameworks "pci_dss" }}true{{ else }}false{{ end }}
+
+  # Compliance policies
+  policies:
+    {{ if hasFeature .ComplianceFrameworks "soc2" }}
+    soc2_security_policy:
+      id: "soc2_security"
+      name: "SOC 2 Security Policy"
+      description: "SOC 2 Type II security controls"
+      framework: "soc2"
+      enabled: true
+      severity: "high"
+      controls:
+        - id: "cc6.1"
+          name: "Logical and Physical Access Controls"
+          description: "The entity implements logical and physical access controls to protect against threats from sources outside its system boundaries"
+          requirements:
+            - "Multi-factor authentication for privileged accounts"
+            - "Regular access reviews"
+            - "Physical security controls"
+          tests:
+            - id: "cc6.1_mfa_test"
+              name: "MFA Implementation Test"
+              description: "Verify MFA is enabled for all privileged accounts"
+              type: "automated"
+              script: "check_mfa_enabled.sh"
+              expected: true
+          status: "not_tested"
+          evidence: []
+        - id: "cc6.2"
+          name: "System Access Monitoring"
+          description: "The entity monitors system access and unauthorized access attempts"
+          requirements:
+            - "Access logging enabled"
+            - "Failed login attempt monitoring"
+            - "Privileged access monitoring"
+          tests:
+            - id: "cc6.2_logging_test"
+              name: "Access Logging Test"
+              description: "Verify access logging is properly configured"
+              type: "automated"
+              script: "check_access_logging.sh"
+              expected: true
+          status: "not_tested"
+          evidence: []
+      metadata:
+        version: "1.0"
+        last_updated: "{{ now.Format "2006-01-02" }}"
+    {{ end }}
+
+    {{ if hasFeature .ComplianceFrameworks "gdpr" }}
+    gdpr_data_protection_policy:
+      id: "gdpr_data_protection"
+      name: "GDPR Data Protection Policy"
+      description: "GDPR data protection and privacy controls"
+      framework: "gdpr"
+      enabled: true
+      severity: "critical"
+      controls:
+        - id: "art25"
+          name: "Data Protection by Design and by Default"
+          description: "Implement appropriate technical and organisational measures"
+          requirements:
+            - "Data minimization"
+            - "Purpose limitation"
+            - "Storage limitation"
+            - "Data encryption"
+          tests:
+            - id: "art25_encryption_test"
+              name: "Data Encryption Test"
+              description: "Verify personal data is encrypted at rest and in transit"
+              type: "automated"
+              script: "check_data_encryption.sh"
+              expected: true
+          status: "not_tested"
+          evidence: []
+        - id: "art32"
+          name: "Security of Processing"
+          description: "Implement appropriate technical and organisational measures to ensure security"
+          requirements:
+            - "Pseudonymisation and encryption"
+            - "Confidentiality, integrity, availability"
+            - "Regular testing and evaluation"
+          tests:
+            - id: "art32_security_test"
+              name: "Security Measures Test"
+              description: "Verify security measures are implemented"
+              type: "manual"
+              expected: "documented_procedures"
+          status: "not_tested"
+          evidence: []
+      metadata:
+        version: "1.0"
+        last_updated: "{{ now.Format "2006-01-02" }}"
+    {{ end }}
+
+    {{ if hasFeature .ComplianceFrameworks "hipaa" }}
+    hipaa_security_policy:
+      id: "hipaa_security"
+      name: "HIPAA Security Policy"
+      description: "HIPAA security and privacy controls for PHI"
+      framework: "hipaa"
+      enabled: true
+      severity: "critical"
+      controls:
+        - id: "164.312a1"
+          name: "Access Control"
+          description: "Assign a unique name and/or number for identifying and tracking user identity"
+          requirements:
+            - "Unique user identification"
+            - "Emergency access procedure"
+            - "Automatic logoff"
+            - "Encryption and decryption"
+          tests:
+            - id: "164.312a1_unique_id_test"
+              name: "Unique User ID Test"
+              description: "Verify each user has a unique identifier"
+              type: "automated"
+              script: "check_unique_user_ids.sh"
+              expected: true
+          status: "not_tested"
+          evidence: []
+        - id: "164.312e1"
+          name: "Transmission Security"
+          description: "Implement technical security measures to guard against unauthorized access to PHI"
+          requirements:
+            - "Integrity controls"
+            - "Encryption controls"
+          tests:
+            - id: "164.312e1_transmission_test"
+              name: "Transmission Security Test"
+              description: "Verify PHI transmission is encrypted"
+              type: "automated"
+              script: "check_transmission_encryption.sh"
+              expected: true
+          status: "not_tested"
+          evidence: []
+      metadata:
+        version: "1.0"
+        last_updated: "{{ now.Format "2006-01-02" }}"
+    {{ end }}
+
+    {{ if hasFeature .ComplianceFrameworks "pci_dss" }}
+    pci_dss_security_policy:
+      id: "pci_dss_security"
+      name: "PCI DSS Security Policy"
+      description: "PCI DSS security controls for cardholder data"
+      framework: "pci_dss"
+      enabled: true
+      severity: "critical"
+      controls:
+        - id: "req3"
+          name: "Protect Stored Cardholder Data"
+          description: "Protect stored cardholder data"
+          requirements:
+            - "Strong cryptography and security protocols"
+            - "Proper key management"
+            - "Secure storage of cardholder data"
+          tests:
+            - id: "req3_encryption_test"
+              name: "Cardholder Data Encryption Test"
+              description: "Verify cardholder data is encrypted"
+              type: "automated"
+              script: "check_cardholder_encryption.sh"
+              expected: true
+          status: "not_tested"
+          evidence: []
+        - id: "req8"
+          name: "Identify and Authenticate Access"
+          description: "Identify and authenticate access to system components"
+          requirements:
+            - "Unique user IDs"
+            - "Strong authentication"
+            - "Multi-factor authentication"
+          tests:
+            - id: "req8_auth_test"
+              name: "Authentication Test"
+              description: "Verify strong authentication is implemented"
+              type: "automated"
+              script: "check_strong_auth.sh"
+              expected: true
+          status: "not_tested"
+          evidence: []
+      metadata:
+        version: "1.0"
+        last_updated: "{{ now.Format "2006-01-02" }}"
+    {{ end }}
+
+  # Compliance reporting configuration
+  reporting:
+    enabled: true
+    formats: ["json", "html"]
+    schedule: "0 0 * * 0"  # Weekly on Sunday at midnight
+    output_dir: "./compliance-reports"
+    recipients:
+      - "compliance@{{ .AuthorEmail | default "example.com" }}"
+      - "security@{{ .AuthorEmail | default "example.com" }}"
+
+  # Compliance auditing configuration
+  auditing:
+    enabled: true
+    log_level: "info"
+    retention_days: 2555  # 7 years for compliance
+    encrypt_logs: true
+    remote_logging: false
+    remote_endpoint: ""
+
+# Compliance monitoring and alerting
+monitoring:
+  compliance_events:
+    enabled: true
+    log_level: "info"
+    alert_on:
+      - "compliance_violation"
+      - "control_failure"
+      - "test_failure"
+      - "evidence_missing"
+    
+  metrics:
+    enabled: true
+    collection_interval: "1h"
+    metrics:
+      - "compliance_status"
+      - "control_status"
+      - "test_results"
+      - "evidence_count"
+
+# Integration settings
+integrations:
+  # GRC (Governance, Risk, and Compliance) platform integration
+  grc_platform:
+    enabled: false
+    provider: ""  # Options: servicenow, archer, metricstream
+    endpoint: ""
+    api_key: ""
+    
+  # Document management system integration
+  document_management:
+    enabled: false
+    provider: ""  # Options: sharepoint, confluence, notion
+    endpoint: ""
+    credentials: ""
+
+# Evidence collection settings
+evidence:
+  collection:
+    enabled: true
+    automated: true
+    retention_days: 2555  # 7 years
+    encryption: true
+    
+  types:
+    - "screenshots"
+    - "log_files"
+    - "test_results"
+    - "configuration_files"
+    - "documentation"
+    
+  storage:
+    provider: "local"  # Options: local, s3, azure_blob, gcs
+    location: "./compliance-evidence"
+    encryption_key: ""

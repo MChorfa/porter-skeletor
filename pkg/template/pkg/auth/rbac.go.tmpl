@@ -1,0 +1,368 @@
+package auth
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"get.porter.sh/porter/pkg/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+)
+
+// RBACConfig holds RBAC configuration
+type RBACConfig struct {
+	Enabled     bool                    `json:"enabled" yaml:"enabled"`
+	Roles       map[string]Role         `json:"roles" yaml:"roles"`
+	Permissions map[string]Permission   `json:"permissions" yaml:"permissions"`
+	Policies    map[string]Policy       `json:"policies" yaml:"policies"`
+	Sessions    SessionConfig           `json:"sessions" yaml:"sessions"`
+}
+
+// Role represents a user role
+type Role struct {
+	ID          string            `json:"id" yaml:"id"`
+	Name        string            `json:"name" yaml:"name"`
+	Description string            `json:"description" yaml:"description"`
+	Permissions []string          `json:"permissions" yaml:"permissions"`
+	Inherits    []string          `json:"inherits" yaml:"inherits"`
+	Metadata    map[string]string `json:"metadata" yaml:"metadata"`
+}
+
+// Permission represents a system permission
+type Permission struct {
+	ID          string            `json:"id" yaml:"id"`
+	Name        string            `json:"name" yaml:"name"`
+	Description string            `json:"description" yaml:"description"`
+	Resource    string            `json:"resource" yaml:"resource"`
+	Action      string            `json:"action" yaml:"action"`
+	Conditions  []string          `json:"conditions" yaml:"conditions"`
+	Metadata    map[string]string `json:"metadata" yaml:"metadata"`
+}
+
+// Policy represents an access control policy
+type Policy struct {
+	ID          string            `json:"id" yaml:"id"`
+	Name        string            `json:"name" yaml:"name"`
+	Description string            `json:"description" yaml:"description"`
+	Rules       []PolicyRule      `json:"rules" yaml:"rules"`
+	Effect      PolicyEffect      `json:"effect" yaml:"effect"`
+	Metadata    map[string]string `json:"metadata" yaml:"metadata"`
+}
+
+// PolicyRule represents a rule within a policy
+type PolicyRule struct {
+	ID         string            `json:"id" yaml:"id"`
+	Subject    string            `json:"subject" yaml:"subject"`    // user, role, group
+	Resource   string            `json:"resource" yaml:"resource"`  // resource pattern
+	Action     string            `json:"action" yaml:"action"`      // action pattern
+	Conditions []string          `json:"conditions" yaml:"conditions"`
+	Metadata   map[string]string `json:"metadata" yaml:"metadata"`
+}
+
+// PolicyEffect represents the effect of a policy
+type PolicyEffect string
+
+const (
+	PolicyEffectAllow PolicyEffect = "allow"
+	PolicyEffectDeny  PolicyEffect = "deny"
+)
+
+// SessionConfig holds session management configuration
+type SessionConfig struct {
+	Enabled        bool          `json:"enabled" yaml:"enabled"`
+	Timeout        time.Duration `json:"timeout" yaml:"timeout"`
+	MaxSessions    int           `json:"max_sessions" yaml:"max_sessions"`
+	SecureCookies  bool          `json:"secure_cookies" yaml:"secure_cookies"`
+	SameSite       string        `json:"same_site" yaml:"same_site"`
+	RefreshEnabled bool          `json:"refresh_enabled" yaml:"refresh_enabled"`
+}
+
+// User represents a user in the system
+type User struct {
+	ID          string            `json:"id" yaml:"id"`
+	Username    string            `json:"username" yaml:"username"`
+	Email       string            `json:"email" yaml:"email"`
+	Roles       []string          `json:"roles" yaml:"roles"`
+	Groups      []string          `json:"groups" yaml:"groups"`
+	Attributes  map[string]string `json:"attributes" yaml:"attributes"`
+	Active      bool              `json:"active" yaml:"active"`
+	LastLogin   time.Time         `json:"last_login" yaml:"last_login"`
+	CreatedAt   time.Time         `json:"created_at" yaml:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at" yaml:"updated_at"`
+}
+
+// AuthorizationRequest represents an authorization request
+type AuthorizationRequest struct {
+	User     *User             `json:"user"`
+	Resource string            `json:"resource"`
+	Action   string            `json:"action"`
+	Context  map[string]string `json:"context"`
+}
+
+// AuthorizationResponse represents an authorization response
+type AuthorizationResponse struct {
+	Allowed   bool              `json:"allowed"`
+	Reason    string            `json:"reason"`
+	Policies  []string          `json:"policies"`
+	Context   map[string]string `json:"context"`
+	Timestamp time.Time         `json:"timestamp"`
+}
+
+// RBACManager manages role-based access control
+type RBACManager struct {
+	config *RBACConfig
+	tracer trace.Tracer
+}
+
+// NewRBACManager creates a new RBAC manager
+func NewRBACManager(config *RBACConfig) *RBACManager {
+	return &RBACManager{
+		config: config,
+		tracer: tracing.Tracer("{{ .ModulePath }}/auth/rbac"),
+	}
+}
+
+// Authorize checks if a user is authorized to perform an action on a resource
+func (rm *RBACManager) Authorize(ctx context.Context, req *AuthorizationRequest) (*AuthorizationResponse, error) {
+	ctx, span := rm.tracer.Start(ctx, "rbac.authorize")
+	defer span.End()
+
+	if !rm.config.Enabled {
+		return &AuthorizationResponse{
+			Allowed:   true,
+			Reason:    "RBAC disabled",
+			Timestamp: time.Now(),
+		}, nil
+	}
+
+	span.SetAttributes(
+		attribute.String("auth.user.id", req.User.ID),
+		attribute.String("auth.user.username", req.User.Username),
+		attribute.String("auth.resource", req.Resource),
+		attribute.String("auth.action", req.Action),
+	)
+
+	response := &AuthorizationResponse{
+		Allowed:   false,
+		Timestamp: time.Now(),
+		Context:   make(map[string]string),
+	}
+
+	// Check if user is active
+	if !req.User.Active {
+		response.Reason = "User is not active"
+		span.SetAttributes(attribute.String("auth.result", "denied_inactive_user"))
+		return response, nil
+	}
+
+	// Check role-based permissions
+	if allowed, reason := rm.checkRolePermissions(ctx, req); allowed {
+		response.Allowed = true
+		response.Reason = reason
+		span.SetAttributes(attribute.String("auth.result", "allowed_role_permission"))
+		return response, nil
+	}
+
+	// Check policy-based permissions
+	if allowed, reason, policies := rm.checkPolicyPermissions(ctx, req); allowed {
+		response.Allowed = true
+		response.Reason = reason
+		response.Policies = policies
+		span.SetAttributes(attribute.String("auth.result", "allowed_policy"))
+		return response, nil
+	}
+
+	response.Reason = "No matching permissions found"
+	span.SetAttributes(attribute.String("auth.result", "denied_no_permission"))
+	return response, nil
+}
+
+// checkRolePermissions checks role-based permissions
+func (rm *RBACManager) checkRolePermissions(ctx context.Context, req *AuthorizationRequest) (bool, string) {
+	ctx, span := rm.tracer.Start(ctx, "rbac.check_role_permissions")
+	defer span.End()
+
+	userPermissions := rm.getUserPermissions(req.User)
+	
+	span.SetAttributes(attribute.Int("auth.user.permissions_count", len(userPermissions)))
+
+	for _, permission := range userPermissions {
+		if rm.matchesPermission(permission, req.Resource, req.Action) {
+			span.SetAttributes(
+				attribute.String("auth.matched_permission", permission.ID),
+				attribute.Bool("auth.permission_matched", true),
+			)
+			return true, fmt.Sprintf("Permission granted via %s", permission.ID)
+		}
+	}
+
+	return false, "No matching role permissions"
+}
+
+// checkPolicyPermissions checks policy-based permissions
+func (rm *RBACManager) checkPolicyPermissions(ctx context.Context, req *AuthorizationRequest) (bool, string, []string) {
+	ctx, span := rm.tracer.Start(ctx, "rbac.check_policy_permissions")
+	defer span.End()
+
+	var matchedPolicies []string
+	var allowPolicies []string
+	var denyPolicies []string
+
+	for _, policy := range rm.config.Policies {
+		if rm.matchesPolicy(policy, req) {
+			matchedPolicies = append(matchedPolicies, policy.ID)
+			
+			if policy.Effect == PolicyEffectAllow {
+				allowPolicies = append(allowPolicies, policy.ID)
+			} else if policy.Effect == PolicyEffectDeny {
+				denyPolicies = append(denyPolicies, policy.ID)
+			}
+		}
+	}
+
+	span.SetAttributes(
+		attribute.Int("auth.policies.matched", len(matchedPolicies)),
+		attribute.Int("auth.policies.allow", len(allowPolicies)),
+		attribute.Int("auth.policies.deny", len(denyPolicies)),
+	)
+
+	// Deny takes precedence over allow
+	if len(denyPolicies) > 0 {
+		return false, fmt.Sprintf("Access denied by policies: %s", strings.Join(denyPolicies, ", ")), denyPolicies
+	}
+
+	if len(allowPolicies) > 0 {
+		return true, fmt.Sprintf("Access allowed by policies: %s", strings.Join(allowPolicies, ", ")), allowPolicies
+	}
+
+	return false, "No matching policies", matchedPolicies
+}
+
+// getUserPermissions gets all permissions for a user based on their roles
+func (rm *RBACManager) getUserPermissions(user *User) []Permission {
+	var permissions []Permission
+	seen := make(map[string]bool)
+
+	// Get permissions from direct roles
+	for _, roleID := range user.Roles {
+		if role, exists := rm.config.Roles[roleID]; exists {
+			permissions = append(permissions, rm.getRolePermissions(role, seen)...)
+		}
+	}
+
+	return permissions
+}
+
+// getRolePermissions gets all permissions for a role, including inherited permissions
+func (rm *RBACManager) getRolePermissions(role Role, seen map[string]bool) []Permission {
+	var permissions []Permission
+
+	// Prevent infinite recursion
+	if seen[role.ID] {
+		return permissions
+	}
+	seen[role.ID] = true
+
+	// Get direct permissions
+	for _, permID := range role.Permissions {
+		if perm, exists := rm.config.Permissions[permID]; exists {
+			permissions = append(permissions, perm)
+		}
+	}
+
+	// Get inherited permissions
+	for _, inheritedRoleID := range role.Inherits {
+		if inheritedRole, exists := rm.config.Roles[inheritedRoleID]; exists {
+			permissions = append(permissions, rm.getRolePermissions(inheritedRole, seen)...)
+		}
+	}
+
+	return permissions
+}
+
+// matchesPermission checks if a permission matches the requested resource and action
+func (rm *RBACManager) matchesPermission(permission Permission, resource, action string) bool {
+	// Simple pattern matching - can be enhanced with regex or glob patterns
+	resourceMatch := permission.Resource == "*" || permission.Resource == resource || rm.matchesPattern(permission.Resource, resource)
+	actionMatch := permission.Action == "*" || permission.Action == action || rm.matchesPattern(permission.Action, action)
+	
+	return resourceMatch && actionMatch
+}
+
+// matchesPolicy checks if a policy matches the authorization request
+func (rm *RBACManager) matchesPolicy(policy Policy, req *AuthorizationRequest) bool {
+	for _, rule := range policy.Rules {
+		if rm.matchesPolicyRule(rule, req) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesPolicyRule checks if a policy rule matches the authorization request
+func (rm *RBACManager) matchesPolicyRule(rule PolicyRule, req *AuthorizationRequest) bool {
+	// Check subject (user, role, or group)
+	subjectMatch := false
+	if rule.Subject == "*" || rule.Subject == req.User.ID || rule.Subject == req.User.Username {
+		subjectMatch = true
+	} else {
+		// Check if subject matches any of the user's roles or groups
+		for _, role := range req.User.Roles {
+			if rule.Subject == role {
+				subjectMatch = true
+				break
+			}
+		}
+		if !subjectMatch {
+			for _, group := range req.User.Groups {
+				if rule.Subject == group {
+					subjectMatch = true
+					break
+				}
+			}
+		}
+	}
+
+	if !subjectMatch {
+		return false
+	}
+
+	// Check resource and action
+	resourceMatch := rule.Resource == "*" || rule.Resource == req.Resource || rm.matchesPattern(rule.Resource, req.Resource)
+	actionMatch := rule.Action == "*" || rule.Action == req.Action || rm.matchesPattern(rule.Action, req.Action)
+
+	return resourceMatch && actionMatch
+}
+
+// matchesPattern performs simple pattern matching (can be enhanced with regex)
+func (rm *RBACManager) matchesPattern(pattern, value string) bool {
+	// Simple wildcard matching
+	if strings.HasSuffix(pattern, "*") {
+		prefix := strings.TrimSuffix(pattern, "*")
+		return strings.HasPrefix(value, prefix)
+	}
+	if strings.HasPrefix(pattern, "*") {
+		suffix := strings.TrimPrefix(pattern, "*")
+		return strings.HasSuffix(value, suffix)
+	}
+	return pattern == value
+}
+
+// GetUserRoles returns the roles for a user
+func (rm *RBACManager) GetUserRoles(userID string) ([]Role, error) {
+	// This would typically query a user store
+	// For now, return empty slice
+	return []Role{}, nil
+}
+
+// GetRolePermissions returns the permissions for a role
+func (rm *RBACManager) GetRolePermissions(roleID string) ([]Permission, error) {
+	if role, exists := rm.config.Roles[roleID]; exists {
+		seen := make(map[string]bool)
+		permissions := rm.getRolePermissions(role, seen)
+		return permissions, nil
+	}
+	return nil, fmt.Errorf("role not found: %s", roleID)
+}

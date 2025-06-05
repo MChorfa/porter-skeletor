@@ -40,6 +40,9 @@ builds:
     binary: skeletor # Output binary name
     ldflags: # Linker flags
       - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.Commit}}
+      - -X main.Date={{.Date}}
     goos: # Target operating systems
       - linux
       - darwin
@@ -227,8 +230,90 @@ docker_manifests:
   #     - ghcr.io/getporter/skeletor:latest-amd64
   #     - ghcr.io/getporter/skeletor:latest-arm64
 
+# Homebrew formula configuration
+brews:
+  - # Homebrew formula for the skeletor tool
+    name: skeletor
+    repository:
+      owner: getporter
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    url_template: "https://github.com/getporter/skeletor/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    download_strategy: CurlDownloadStrategy
+    commit_author:
+      name: skeletor-bot
+      email: skeletor-bot@getporter.org
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    homepage: "https://getporter.github.io/skeletor/"
+    description: "Enterprise-grade command-line tool for generating Porter mixins with built-in security, compliance, authentication, and observability features"
+    license: "Apache-2.0"
+    skip_upload: false
+    dependencies:
+      - name: go
+        type: build
+    install: |
+      # Set build variables
+      ldflags = %W[
+        -s -w
+        -X github.com/getporter/skeletor/pkg/version.Version=#{version}
+        -X github.com/getporter/skeletor/pkg/version.Commit=#{Utils.git_head}
+        -X github.com/getporter/skeletor/pkg/version.Date=#{time.iso8601}
+      ]
+
+      # Build the binary
+      system "go", "build", *std_go_args(ldflags: ldflags), "./cmd/skeletor"
+
+      # Install shell completions
+      generate_completions_from_executable(bin/"skeletor", "completion")
+    test: |
+      # Test version output
+      assert_match version.to_s, shell_output("#{bin}/skeletor version")
+
+      # Test help output
+      help_output = shell_output("#{bin}/skeletor --help")
+      assert_match "Create new Porter mixins easily", help_output
+
+      # Test create command help
+      create_help = shell_output("#{bin}/skeletor create --help")
+      assert_match "Create a new Porter mixin", create_help
+      assert_match "--enable-security", create_help
+      assert_match "--enable-compliance", create_help
+      assert_match "--enable-auth", create_help
+      assert_match "--enable-observability", create_help
+
+      # Test dry run (should not create files)
+      system bin/"skeletor", "create", "--name", "test-mixin", "--author", "Test Author", "--dry-run", "--non-interactive"
+      refute_predicate testpath/"test-mixin", :exist?
+
+      # Test actual mixin creation
+      system bin/"skeletor", "create", "--name", "test-mixin", "--author", "Test Author", "--non-interactive"
+      assert_predicate testpath/"test-mixin", :exist?
+      assert_predicate testpath/"test-mixin/go.mod", :exist?
+      assert_predicate testpath/"test-mixin/README.md", :exist?
+
+      # Test enterprise features
+      system bin/"skeletor", "create",
+             "--name", "enterprise-mixin",
+             "--author", "Enterprise Author",
+             "--enable-security",
+             "--security-features", "input_validation,rate_limiting",
+             "--enable-compliance",
+             "--compliance-frameworks", "soc2",
+             "--enable-auth",
+             "--auth-features", "rbac",
+             "--enable-observability",
+             "--observability-features", "apm",
+             "--non-interactive"
+
+      assert_predicate testpath/"enterprise-mixin", :exist?
+      assert_predicate testpath/"enterprise-mixin/pkg/security", :exist?
+      assert_predicate testpath/"enterprise-mixin/pkg/compliance", :exist?
+      assert_predicate testpath/"enterprise-mixin/pkg/auth", :exist?
+      assert_predicate testpath/"enterprise-mixin/pkg/observability", :exist?
+
 # Before hook (runs before build)
-# before:
-#   hooks:
-#     - go mod tidy
-#     - go generate ./...
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...

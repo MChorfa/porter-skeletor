@@ -1,0 +1,257 @@
+package security
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"get.porter.sh/porter/pkg/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+)
+
+// SecurityMiddleware provides HTTP middleware for security features
+type SecurityMiddleware struct {
+	manager *SecurityManager
+	tracer  trace.Tracer
+}
+
+// NewSecurityMiddleware creates a new security middleware
+func NewSecurityMiddleware(manager *SecurityManager) *SecurityMiddleware {
+	return &SecurityMiddleware{
+		manager: manager,
+		tracer:  tracing.Tracer("{{ .ModulePath }}/security"),
+	}
+}
+
+// RateLimitMiddleware provides rate limiting middleware
+func (sm *SecurityMiddleware) RateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := sm.tracer.Start(r.Context(), "security.rate_limit")
+		defer span.End()
+
+		// Check rate limit
+		if err := sm.manager.CheckRateLimit(ctx); err != nil {
+			span.RecordError(err)
+			span.SetAttributes(
+				attribute.String("security.rate_limit.status", "exceeded"),
+				attribute.String("client.ip", r.RemoteAddr),
+			)
+			
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+
+		span.SetAttributes(
+			attribute.String("security.rate_limit.status", "allowed"),
+			attribute.String("client.ip", r.RemoteAddr),
+		)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// SecureHeadersMiddleware applies security headers
+func (sm *SecurityMiddleware) SecureHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := sm.tracer.Start(r.Context(), "security.secure_headers")
+		defer span.End()
+
+		// Apply security headers
+		sm.manager.ApplySecureHeaders(w)
+
+		span.SetAttributes(
+			attribute.Bool("security.headers.applied", true),
+		)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// InputValidationMiddleware validates request input
+func (sm *SecurityMiddleware) InputValidationMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := sm.tracer.Start(r.Context(), "security.input_validation")
+		defer span.End()
+
+		// For demonstration, we'll validate common request parameters
+		// In a real implementation, you'd parse the request body and validate it
+		if err := sm.validateRequestParameters(ctx, r); err != nil {
+			span.RecordError(err)
+			span.SetAttributes(
+				attribute.String("security.validation.status", "failed"),
+				attribute.String("security.validation.error", err.Error()),
+			)
+			
+			http.Error(w, "Invalid input", http.StatusBadRequest)
+			return
+		}
+
+		span.SetAttributes(
+			attribute.String("security.validation.status", "passed"),
+		)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// PolicyEnforcementMiddleware enforces security policies
+func (sm *SecurityMiddleware) PolicyEnforcementMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := sm.tracer.Start(r.Context(), "security.policy_enforcement")
+		defer span.End()
+
+		// Extract resource and action from request
+		resource := r.URL.Path
+		action := r.Method
+
+		// Enforce policies
+		if err := sm.manager.EnforcePolicy(ctx, resource, action); err != nil {
+			span.RecordError(err)
+			span.SetAttributes(
+				attribute.String("security.policy.status", "denied"),
+				attribute.String("security.policy.resource", resource),
+				attribute.String("security.policy.action", action),
+				attribute.String("security.policy.error", err.Error()),
+			)
+			
+			http.Error(w, "Access denied", http.StatusForbidden)
+			return
+		}
+
+		span.SetAttributes(
+			attribute.String("security.policy.status", "allowed"),
+			attribute.String("security.policy.resource", resource),
+			attribute.String("security.policy.action", action),
+		)
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// SecurityMetricsMiddleware collects security metrics
+func (sm *SecurityMiddleware) SecurityMetricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		
+		ctx, span := sm.tracer.Start(r.Context(), "security.metrics")
+		defer span.End()
+
+		// Wrap the response writer to capture status code
+		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		next.ServeHTTP(wrapped, r.WithContext(ctx))
+
+		// Record metrics
+		duration := time.Since(start)
+		
+		span.SetAttributes(
+			attribute.String("http.method", r.Method),
+			attribute.String("http.url", r.URL.Path),
+			attribute.Int("http.status_code", wrapped.statusCode),
+			attribute.Int64("http.duration_ms", duration.Milliseconds()),
+			attribute.String("client.ip", r.RemoteAddr),
+		)
+
+		// Add security-specific metrics
+		metrics := sm.manager.GetSecurityMetrics()
+		for key, value := range metrics {
+			switch v := value.(type) {
+			case bool:
+				span.SetAttributes(attribute.Bool(fmt.Sprintf("security.%s", key), v))
+			case int:
+				span.SetAttributes(attribute.Int(fmt.Sprintf("security.%s", key), v))
+			case float64:
+				span.SetAttributes(attribute.Float64(fmt.Sprintf("security.%s", key), v))
+			case string:
+				span.SetAttributes(attribute.String(fmt.Sprintf("security.%s", key), v))
+			}
+		}
+	})
+}
+
+// CombinedSecurityMiddleware combines all security middleware
+func (sm *SecurityMiddleware) CombinedSecurityMiddleware(next http.Handler) http.Handler {
+	// Apply middleware in order: metrics -> headers -> rate limit -> validation -> policy -> next
+	return sm.SecurityMetricsMiddleware(
+		sm.SecureHeadersMiddleware(
+			sm.RateLimitMiddleware(
+				sm.InputValidationMiddleware(
+					sm.PolicyEnforcementMiddleware(next),
+				),
+			),
+		),
+	)
+}
+
+// validateRequestParameters validates common request parameters
+func (sm *SecurityMiddleware) validateRequestParameters(ctx context.Context, r *http.Request) error {
+	// Parse query parameters and validate them
+	for key, values := range r.URL.Query() {
+		for _, value := range values {
+			if err := sm.validateParameter(ctx, key, value); err != nil {
+				return fmt.Errorf("invalid parameter %s: %w", key, err)
+			}
+		}
+	}
+
+	// Parse form data if present
+	if r.Header.Get("Content-Type") == "application/x-www-form-urlencoded" {
+		if err := r.ParseForm(); err != nil {
+			return fmt.Errorf("failed to parse form data: %w", err)
+		}
+
+		for key, values := range r.PostForm {
+			for _, value := range values {
+				if err := sm.validateParameter(ctx, key, value); err != nil {
+					return fmt.Errorf("invalid form parameter %s: %w", key, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateParameter validates a single parameter
+func (sm *SecurityMiddleware) validateParameter(ctx context.Context, key, value string) error {
+	// Basic validation - can be enhanced based on requirements
+	if len(value) > sm.manager.config.InputValidation.MaxInputLength {
+		return fmt.Errorf("parameter value too long")
+	}
+
+	// Check for common injection patterns
+	dangerousPatterns := []string{
+		"<script",
+		"javascript:",
+		"onload=",
+		"onerror=",
+		"eval(",
+		"exec(",
+		"system(",
+		"../",
+		"..\\",
+	}
+
+	lowerValue := strings.ToLower(value)
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(lowerValue, pattern) {
+			return fmt.Errorf("potentially dangerous content detected")
+		}
+	}
+
+	return nil
+}
+
+// responseWriter wraps http.ResponseWriter to capture status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}

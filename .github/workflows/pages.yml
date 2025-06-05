@@ -1,13 +1,18 @@
 # GitHub Actions workflow for building and deploying the MkDocs site
 # for the Porter Mixin Generator (skeletor) repo to GitHub Pages.
-name: Deploy Generator Docs to GitHub Pages
+name: Deploy Documentation to GitHub Pages
 
 on:
   release:
-    types: [published] # Trigger only when a release is published
+    types: [published] # Trigger when a release is published
   push:
     branches:
-      - main # Also deploy on push to main for latest docs (optional)
+      - main # Deploy on push to main for latest docs
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/pages.yml'
+      - 'README.md'
   workflow_dispatch: # Allow manual trigger
 
 permissions:
@@ -19,7 +24,9 @@ jobs:
   deploy-docs:
     name: Deploy Documentation
     runs-on: ubuntu-latest
-    # Environment block removed - deployment action handles context
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,22 +36,55 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.x # Use a recent Python 3 version
+          python-version: '3.11'
 
-      - name: Install MkDocs and theme
-        run: pip install mkdocs mkdocs-material
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install MkDocs and dependencies
+        run: |
+          pip install --upgrade pip
+          pip install mkdocs mkdocs-material mkdocs-git-revision-date-localized-plugin mkdocs-git-committers-plugin-2
 
       # --- Prepare Documentation Source ---
-      # Create a temporary directory for the site source
-      - name: Create site source directory
-        run: mkdir site_src
-
-      # Copy necessary files into the source directory
-      - name: Copy documentation files
+      - name: Prepare documentation files
         run: |
-          cp README.md site_src/index.md # Use README as index
-          # Add cp commands for any other markdown files (e.g., CONTRIBUTING.md)
-          # cp CONTRIBUTING.md site_src/contributing.md
+          # Ensure docs directory exists
+          mkdir -p docs
+
+          # Copy README as index if docs/index.md doesn't exist
+          if [ ! -f docs/index.md ]; then
+            cp README.md docs/index.md
+          fi
+
+          # Copy other documentation files if they exist
+          if [ -f CONTRIBUTING.md ]; then
+            cp CONTRIBUTING.md docs/contributing.md
+          fi
+
+          if [ -f SECURITY.md ]; then
+            cp SECURITY.md docs/security.md
+          fi
+
+          # Generate CLI help documentation
+          if [ -f ./skeletor ]; then
+            echo "# CLI Help" > docs/cli-help.md
+            echo "" >> docs/cli-help.md
+            echo '```' >> docs/cli-help.md
+            ./skeletor --help >> docs/cli-help.md
+            echo '```' >> docs/cli-help.md
+            echo "" >> docs/cli-help.md
+            echo "## Create Command Help" >> docs/cli-help.md
+            echo "" >> docs/cli-help.md
+            echo '```' >> docs/cli-help.md
+            ./skeletor create --help >> docs/cli-help.md
+            echo '```' >> docs/cli-help.md
+          fi
 
       # --- Build and Deploy ---
       - name: Build MkDocs site
@@ -56,7 +96,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './_site' # Path to the built site directory
+          path: './_site'
 
       - name: Deploy to GitHub Pages
         id: deployment

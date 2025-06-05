@@ -1,117 +1,348 @@
-# Porter Mixin Generator
+# Porter Mixin Generator (Skeletor)
 
 [![Build Status](https://github.com/getporter/skeletor/actions/workflows/skeletor.yml/badge.svg)](https://github.com/getporter/skeletor/actions/workflows/skeletor.yml)
-[![GitHub Pages](https://github.com/getporter/skeletor/actions/workflows/pages.yml/badge.svg)](https://getporter.github.io/skeletor/) <!-- Add Pages badge/link -->
+[![GitHub Pages](https://github.com/getporter/skeletor/actions/workflows/pages.yml/badge.svg)](https://getporter.github.io/skeletor/)
+[![Release](https://img.shields.io/github/v/release/getporter/skeletor)](https://github.com/getporter/skeletor/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/getporter/skeletor)](https://goreportcard.com/report/github.com/getporter/skeletor)
 
-This repository contains the `skeletor`, a command-line tool designed to streamline the creation of new Porter mixins. It scaffolds a new mixin project based on an enhanced template (sourced from `templates/` in this repository or an external URL/directory), providing a solid foundation with enterprise-grade features built-in.
+**Skeletor** is an enterprise-grade command-line tool designed to streamline the creation of new Porter mixins with built-in security, compliance, authentication, and observability features. It scaffolds production-ready mixin projects based on configurable templates, providing a solid foundation for enterprise environments.
 
-**[View Documentation Site](https://getporter.github.io/skeletor/)** <!-- Add prominent link -->
+**[📚 View Documentation Site](https://getporter.github.io/skeletor/)** | **[🚀 Quick Start](#quick-start)** | **[🏢 Enterprise Features](#enterprise-features)**
 
 ## Features
 
-* **Rapid Scaffolding:** Quickly generate a new Porter mixin project structure.
-* **Enterprise-Ready Template:** The generated mixin includes:
-  * **Observability:** Built-in OpenTelemetry tracing and structured logging, configurable via environment variables.
-  * **CI/CD Pipeline:** A default GitHub Actions workflow (`.github/workflows/mixin-ci.yml`) for building, testing, linting, and vulnerability scanning.
-  * **Dockerfile:** A multi-stage Dockerfile for creating optimized and secure mixin images.
-  * **Security & Contribution Docs:** Standard `SECURITY.md` and `CONTRIBUTING.md` files.
-  * **Linting:** Default `golangci-lint` configuration (`.golangci.yml`).
-* **Customizable:** Supports flags for non-interactive generation and specifying template variables.
-* **Validation:** Performs basic post-generation checks (`go mod tidy`, `go build`, `go test`).
-* **Filename Templating:** Supports Go template syntax in template filenames and directory names (e.g., `cmd/{{ .MixinName }}/main.go.tmpl`).
-* **Onboarding Guides:** Generates `docs/DEVELOPER_GUIDE.md` and `docs/OPERATIONS_GUIDE.md` within the new mixin project.
+### 🚀 **Core Capabilities**
+* **Rapid Scaffolding:** Generate production-ready Porter mixin projects in seconds
+* **Enterprise-Grade Templates:** Built-in support for security, compliance, and observability
+* **Flexible Configuration:** Interactive and non-interactive modes with extensive customization
+* **Template Engine:** Advanced Go template support with custom functions and conditional rendering
+* **Post-Generation Validation:** Automatic code formatting, dependency resolution, and build verification
+
+### 🏢 **Enterprise Features**
+
+#### 🔒 **Security Features** (`--enable-security`)
+* **Input Validation:** Comprehensive input sanitization and validation
+* **Rate Limiting:** Configurable request throttling and abuse prevention
+* **Secure Headers:** HTTP security headers and CORS configuration
+* **Vulnerability Scanning:** Integrated security scanning with Gosec
+* **Policy Enforcement:** Role-based access control and security policies
+
+#### 📋 **Compliance Frameworks** (`--enable-compliance`)
+* **SOC 2:** System and Organization Controls compliance templates
+* **GDPR:** General Data Protection Regulation compliance features
+* **HIPAA:** Health Insurance Portability and Accountability Act support
+* **PCI DSS:** Payment Card Industry Data Security Standard templates
+
+#### 🔐 **Authentication & Authorization** (`--enable-auth`)
+* **RBAC:** Role-Based Access Control implementation
+* **LDAP Integration:** Enterprise directory service integration
+* **SSO Support:** Single Sign-On with SAML/OAuth2/OIDC
+* **MFA:** Multi-Factor Authentication implementation
+* **HashiCorp Vault:** Secrets management integration
+* **Session Management:** Secure session handling and lifecycle management
+
+#### 📊 **Enhanced Observability** (`--enable-observability`)
+* **APM Integration:** Application Performance Monitoring setup
+* **Infrastructure Monitoring:** System metrics and health checks
+* **Custom Metrics:** Business-specific metric collection
+* **Health Checks:** Comprehensive health endpoint implementation
+* **OpenTelemetry:** Distributed tracing and observability
+* **Audit Logging:** Comprehensive audit trail and compliance logging
+* **Distributed Tracing:** End-to-end request tracing across services
+
+## Quick Start
+
+### 🚀 **Basic Mixin Generation**
+
+```bash
+# Install Skeletor
+go install github.com/getporter/skeletor/cmd/skeletor@latest
+
+# Create a basic mixin
+skeletor create --name my-mixin --author "Your Name" --module "github.com/your-org/my-mixin"
+```
+
+### 🏢 **Enterprise Mixin with All Features**
+
+```bash
+# Create an enterprise-ready mixin with all security, compliance, auth, and observability features
+skeletor create \
+  --name enterprise-mixin \
+  --author "Enterprise Team" \
+  --module "github.com/your-org/enterprise-mixin" \
+  --enable-security \
+  --security-features "input_validation,rate_limiting,secure_headers,policy_enforcement" \
+  --enable-compliance \
+  --compliance-frameworks "soc2,gdpr,hipaa" \
+  --enable-auth \
+  --auth-features "rbac,ldap,sso,mfa,vault" \
+  --enable-observability \
+  --observability-features "apm,opentelemetry,audit_logging,distributed_tracing"
+```
+
+### 🔒 **Security-Focused Mixin**
+
+```bash
+# Create a mixin with enhanced security features
+skeletor create \
+  --name secure-mixin \
+  --author "Security Team" \
+  --enable-security \
+  --security-features "input_validation,rate_limiting,vulnerability_scanning" \
+  --compliance-level "slsa-l3"
+```
 
 ## Installation
 
-You can install the generator using `go install`:
+### 📦 **Package Managers**
 
+**Homebrew (macOS/Linux):**
+```bash
+brew install getporter/tap/skeletor
+```
+
+**Go Install:**
 ```bash
 go install github.com/getporter/skeletor/cmd/skeletor@latest
 ```
 
-Alternatively, build from source:
+### 📥 **Binary Downloads**
+
+Download pre-built binaries from the [releases page](https://github.com/getporter/skeletor/releases):
+
+```bash
+# Linux (amd64)
+curl -L https://github.com/getporter/skeletor/releases/latest/download/skeletor_linux_amd64.tar.gz | tar xz
+sudo mv skeletor /usr/local/bin/
+
+# macOS (amd64)
+curl -L https://github.com/getporter/skeletor/releases/latest/download/skeletor_darwin_amd64.tar.gz | tar xz
+sudo mv skeletor /usr/local/bin/
+
+# Windows (amd64)
+# Download skeletor_windows_amd64.zip from releases page
+```
+
+### 🐳 **Docker**
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/getporter/skeletor:latest
+
+# Create a mixin using Docker
+docker run --rm -v "$(pwd):/work" -w /work \
+  ghcr.io/getporter/skeletor:latest \
+  create --name my-mixin --author "Your Name" --module "github.com/your-org/my-mixin"
+```
+
+### 🔨 **Build from Source**
 
 ```bash
 git clone https://github.com/getporter/skeletor.git
 cd skeletor
 go run mage.go build install
-# The binary will be in ./bin/skeletor
-```
-
-**Using Docker:**
-
-Pull the latest image from GitHub Container Registry:
-
-```bash
-docker pull ghcr.io/getporter/skeletor:latest
-```
-
-Run the generator using Docker:
-
-```bash
-# Example: Create mixin in the current directory, mounting it as /work
-docker run --rm -v "$(pwd):/work" -w /work \
-  ghcr.io/getporter/skeletor:latest \
-  create --name my-mixin --author "Your Name" --module "github.com/your-org/my-mixin" --output ./my-mixin
+# Binary will be in ./bin/skeletor
 ```
 
 ## Usage
 
-To create a new mixin named `my-mixin`:
+### 📖 **Command Reference**
 
 ```bash
-skeletor create --name my-mixin --author "Your Name" --module "github.com/your-org/my-mixin"
+skeletor create [flags]
 ```
 
-This will create a new directory `./my-mixin` containing the scaffolded project.
+### 🏗️ **Core Flags**
 
-**Flags:**
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--name` | **(Required)** Name of the new mixin (lowercase) | - |
+| `--author` | **(Required)** Author name for the mixin | - |
+| `--module` | Go module path | `github.com/getporter/<name>` |
+| `--output` | Output directory | `./<name>` |
+| `--compliance-level` | Compliance level (`basic`, `slsa-l1`, `slsa-l3`) | `basic` |
+| `--non-interactive` | Run without prompts | `false` |
+| `--dry-run` | Simulate generation without writing files | `false` |
 
-* `--name`: (Required) Name of the new mixin (lowercase).
-* `--author`: (Required) Author name for the mixin.
-* `--module`: Go module path (default: `github.com/getporter/<name>`).
-* `--output`: Output directory (default: `./<name>`).
-* `--non-interactive`: Run without prompts, using defaults or provided flags.
-* `--template-url`: URL to a git repository containing a custom template (overrides default).
-* `--template-dir`: Local directory containing the template (e.g., `--template-dir templates` to use the one in this repo).
-* `--var`: Set template variables in `KEY=VALUE` format (can be used multiple times).
-* `--compliance-level`: Desired compliance level ("basic", "slsa-l1", "slsa-l3"; default: "basic"). Affects generated files like Dockerfile, .goreleaser.yml, .golangci.yml, SECURITY.md.
-* `--dry-run`: Simulate generation without writing files or running hooks.
+### 🏢 **Enterprise Feature Flags**
+
+#### 🔒 **Security Features**
+```bash
+--enable-security --security-features "feature1,feature2,..."
+```
+
+**Available Security Features:**
+- `input_validation` - Comprehensive input sanitization and validation
+- `rate_limiting` - Request throttling and abuse prevention
+- `secure_headers` - HTTP security headers and CORS configuration
+- `vulnerability_scanning` - Integrated security scanning with Gosec
+- `policy_enforcement` - Role-based access control and security policies
+
+#### 📋 **Compliance Frameworks**
+```bash
+--enable-compliance --compliance-frameworks "framework1,framework2,..."
+```
+
+**Available Compliance Frameworks:**
+- `soc2` - System and Organization Controls compliance templates
+- `gdpr` - General Data Protection Regulation compliance features
+- `hipaa` - Health Insurance Portability and Accountability Act support
+- `pci_dss` - Payment Card Industry Data Security Standard templates
+
+#### 🔐 **Authentication & Authorization**
+```bash
+--enable-auth --auth-features "feature1,feature2,..."
+```
+
+**Available Auth Features:**
+- `rbac` - Role-Based Access Control implementation
+- `ldap` - Enterprise directory service integration
+- `sso` - Single Sign-On with SAML/OAuth2/OIDC
+- `mfa` - Multi-Factor Authentication implementation
+- `vault` - HashiCorp Vault secrets management integration
+- `session_management` - Secure session handling and lifecycle management
+
+#### 📊 **Enhanced Observability**
+```bash
+--enable-observability --observability-features "feature1,feature2,..."
+```
+
+**Available Observability Features:**
+- `apm` - Application Performance Monitoring setup
+- `infrastructure` - System metrics and health checks
+- `custom_metrics` - Business-specific metric collection
+- `health_checks` - Comprehensive health endpoint implementation
+- `opentelemetry` - Distributed tracing and observability
+- `audit_logging` - Comprehensive audit trail and compliance logging
+- `tracing` - End-to-end request tracing across services
+
+### 🛠️ **Advanced Options**
+
+| Flag | Description |
+|------|-------------|
+| `--template-url` | URL to a git repository containing a custom template |
+| `--template-dir` | Local directory containing the template |
+| `--var` | Set template variables in `KEY=VALUE` format (repeatable) |
 
 ## Template Variables
 
-The following variables are used by the default template (`templates/template.json`) and can be provided during generation (interactively or via `--var` flag):
+The following variables are used by the default template and can be provided during generation (interactively or via `--var` flag):
 
-* `MixinName` (string, required): Name of the mixin (lowercase).
-* `AuthorName` (string, required): Author name.
-* `ModulePath` (string): Go module path (defaults based on `MixinName`).
-* `Description` (string): Short description of the mixin (defaults based on `MixinName`).
-* `License` (string): License for the mixin (choices: "Apache-2.0", "MIT", "GPL-3.0"; default: "Apache-2.0").
-* `InitGit` (bool): Initialize a git repository in the output directory? (default: true).
-* `MixinFeedRepoURL` (string, optional): Git URL for the mixin feed repository. If provided, `mage Publish` will attempt to update the feed.
-* `MixinFeedBranch` (string): Branch in the mixin feed repository (default: "main").
-* `AuthorEmail` (string, optional): Author's email for security contact (used in `.well-known/security.txt`).
+### 📝 **Core Variables**
 
-# Note: ComplianceLevel is now a direct flag (--compliance-level), not a template variable
+| Variable | Type | Description | Default |
+|----------|------|-------------|---------|
+| `MixinName` | string | Name of the mixin (lowercase) | **(required)** |
+| `AuthorName` | string | Author name | **(required)** |
+| `ModulePath` | string | Go module path | `github.com/getporter/<MixinName>` |
+| `Description` | string | Short description of the mixin | Auto-generated |
+| `License` | string | License (`Apache-2.0`, `MIT`, `GPL-3.0`) | `Apache-2.0` |
+| `InitGit` | bool | Initialize git repository | `true` |
+| `AuthorEmail` | string | Author's email for security contact | *(optional)* |
+
+### 🔗 **Integration Variables**
+
+| Variable | Type | Description | Default |
+|----------|------|-------------|---------|
+| `MixinFeedRepoURL` | string | Git URL for mixin feed repository | *(optional)* |
+| `MixinFeedBranch` | string | Branch in mixin feed repository | `main` |
+
+### 🏢 **Enterprise Variables** *(Auto-populated from flags)*
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `EnableSecurity` | bool | Security features enabled |
+| `SecurityFeatures` | string | Comma-separated security features |
+| `EnableCompliance` | bool | Compliance frameworks enabled |
+| `ComplianceFrameworks` | string | Comma-separated compliance frameworks |
+| `EnableAuth` | bool | Authentication features enabled |
+| `AuthFeatures` | string | Comma-separated auth features |
+| `EnableObservability` | bool | Observability features enabled |
+| `ObservabilityFeatures` | string | Comma-separated observability features |
+
+> **Note:** Enterprise variables are automatically populated based on the enterprise feature flags and don't need to be set manually.
 
 ## Generated Project Structure
 
-The generated mixin project follows the standard Porter mixin structure:
+The generated mixin project follows the standard Porter mixin structure with optional enterprise features:
 
-* `cmd/YOURMIXIN/`: CLI implementation using Cobra. Sourced from `templates/cmd/mixin/*.go.tmpl`.
-* `pkg/YOURMIXIN/`: Core mixin logic (implement build, install, invoke, etc.). Sourced from `templates/pkg/mixin/`. *(Note: `pkg/` directory structure might need creation/templating if not already present)*
-* `ci/main.go`: Dagger pipeline definition for CI/CD tasks (test, build, release). Sourced from `templates/ci/main.go.tmpl`.
-* `.github/workflows/mixin-ci.yml`: GitHub Actions workflow that executes the Dagger pipeline. Sourced from `templates/.github/workflows/mixin-ci.yml.tmpl`.
-* `magefile.go`: Build automation using Mage (can be invoked by Dagger). Sourced from `magefile.go` at the root.
-* `.goreleaser.yml`: Configuration for GoReleaser (used by Dagger release task).
-* `tools.go`: Go tool dependencies.
-* `go.mod`, `go.sum`: Go module files.
-* `Dockerfile`: For building the mixin container image (can be used by GoReleaser). Sourced from `templates/Dockerfile.tmpl`.
-* `.golangci.yml`: Default or strict linter configuration (conditionally generated). Sourced from `templates/.golangci.yml.tmpl` or `templates/.golangci-strict.yml.tmpl`.
-* `.well-known/security.txt`: Standard security contact file. Sourced from `templates/.well-known/security.txt.tmpl`.
-* `docs/DEVELOPER_GUIDE.md`: Guide for developers extending the mixin. Sourced from `templates/docs/DEVELOPER_GUIDE.md.tmpl`.
-* `docs/OPERATIONS_GUIDE.md`: Guide for users operating the mixin. Sourced from `templates/docs/OPERATIONS_GUIDE.md.tmpl`.
-* `README.md`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`: Documentation and policy files. Sourced from templates.
+### 📁 **Core Structure**
+
+```
+your-mixin/
+├── cmd/your-mixin/          # CLI implementation using Cobra
+├── pkg/your-mixin/          # Core mixin logic (build, install, invoke, etc.)
+├── ci/main.go               # Dagger pipeline for CI/CD tasks
+├── .github/workflows/       # GitHub Actions workflows
+├── magefile.go              # Build automation using Mage
+├── .goreleaser.yml          # GoReleaser configuration
+├── Dockerfile               # Container image build
+├── .golangci.yml            # Linter configuration
+├── tools.go                 # Go tool dependencies
+├── go.mod, go.sum           # Go module files
+├── README.md                # Project documentation
+├── LICENSE                  # License file
+├── CONTRIBUTING.md          # Contribution guidelines
+├── SECURITY.md              # Security policy
+└── docs/                    # Documentation
+    ├── DEVELOPER_GUIDE.md   # Developer guide
+    └── OPERATIONS_GUIDE.md  # Operations guide
+```
+
+### 🏢 **Enterprise Features** *(Generated when enabled)*
+
+#### 🔒 **Security Features** (`--enable-security`)
+```
+pkg/security/
+├── security.go              # Core security functions
+├── middleware.go            # Security middleware
+└── validation.go            # Input validation
+
+configs/security.yaml        # Security configuration
+```
+
+#### 📋 **Compliance Features** (`--enable-compliance`)
+```
+pkg/compliance/
+└── compliance.go            # Compliance framework support
+
+configs/compliance.yaml      # Compliance configuration
+docs/COMPLIANCE_GUIDE.md     # Compliance documentation
+```
+
+#### 🔐 **Authentication Features** (`--enable-auth`)
+```
+pkg/auth/
+├── rbac.go                  # Role-based access control
+├── ldap.go                  # LDAP integration
+├── sso.go                   # Single sign-on
+└── vault.go                 # HashiCorp Vault integration
+
+configs/auth.yaml            # Authentication configuration
+docs/AUTH_GUIDE.md           # Authentication documentation
+```
+
+#### 📊 **Observability Features** (`--enable-observability`)
+```
+pkg/observability/
+├── observability.go         # Enhanced monitoring
+├── metrics.go               # Custom metrics
+├── tracing.go               # Distributed tracing
+└── audit.go                 # Audit logging
+
+configs/observability.yaml   # Observability configuration
+docs/OBSERVABILITY_GUIDE.md  # Observability documentation
+```
+
+### 🔧 **Configuration Files**
+
+| File | Purpose | Generated When |
+|------|---------|----------------|
+| `.well-known/security.txt` | Security contact information | Always |
+| `configs/security.yaml` | Security feature configuration | `--enable-security` |
+| `configs/compliance.yaml` | Compliance framework settings | `--enable-compliance` |
+| `configs/auth.yaml` | Authentication configuration | `--enable-auth` |
+| `configs/observability.yaml` | Observability settings | `--enable-observability` |
 
 ## Development (Porter Mixin Generator)
 

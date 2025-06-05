@@ -20,6 +20,13 @@ import (
 	"github.com/getporter/skeletor/pkg" // Import the local pkg
 )
 
+// Version information (set by build flags)
+var (
+	Version = "dev"
+	Commit  = "unknown"
+	Date    = "unknown"
+)
+
 var workingDir string
 
 func init() {
@@ -55,21 +62,42 @@ func buildRootCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(buildCreateCommand())
+	cmd.AddCommand(buildVersionCommand())
 	return cmd
+}
+
+func buildVersionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Show version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("Skeletor %s\n", Version)
+			fmt.Printf("Commit: %s\n", Commit)
+			fmt.Printf("Built: %s\n", Date)
+		},
+	}
 }
 
 func buildCreateCommand() *cobra.Command {
 	var (
-		name            string
-		author          string
-		modulePath      string
-		outputDir       string
-		nonInteractive  bool
-		templateUrl     string
-		templateDir     string
-		extraVars       []string
-		dryRun          bool   // Add dryRun variable
-		complianceLevel string // Declare complianceLevel
+		name                  string
+		author                string
+		modulePath            string
+		outputDir             string
+		nonInteractive        bool
+		templateUrl           string
+		templateDir           string
+		extraVars             []string
+		dryRun                bool   // Add dryRun variable
+		complianceLevel       string // Declare complianceLevel
+		enableSecurity        bool
+		enableCompliance      bool
+		enableAuth            bool
+		enableObservability   bool
+		securityFeatures      string
+		complianceFrameworks  string
+		authFeatures          string
+		observabilityFeatures string
 	)
 
 	cmd := &cobra.Command{
@@ -93,8 +121,10 @@ func buildCreateCommand() *cobra.Command {
 			}
 
 			// Create template data from config and flags
-			// Pass complianceLevel to buildTemplateData
-			data, err := buildTemplateData(config, name, author, modulePath, outputDir, complianceLevel, nonInteractive, extraVars)
+			// Pass complianceLevel and feature toggles to buildTemplateData
+			data, err := buildTemplateDataWithFeatures(config, name, author, modulePath, outputDir, complianceLevel, nonInteractive, extraVars,
+				enableSecurity, enableCompliance, enableAuth, enableObservability,
+				securityFeatures, complianceFrameworks, authFeatures, observabilityFeatures)
 			if err != nil {
 				return err
 			}
@@ -167,6 +197,17 @@ func buildCreateCommand() *cobra.Command {
 	// Use "basic" as default to match template.json, ensure choices match template.json
 	cmd.Flags().StringVar(&complianceLevel, "compliance-level", "basic", "Compliance level (basic, slsa-l1, slsa-l3)")
 
+	// Enterprise feature toggle flags
+	cmd.Flags().BoolVar(&enableSecurity, "enable-security", false, "Enable enterprise security features")
+	cmd.Flags().BoolVar(&enableCompliance, "enable-compliance", false, "Enable compliance framework features")
+	cmd.Flags().BoolVar(&enableAuth, "enable-auth", false, "Enable authentication and authorization features")
+	cmd.Flags().BoolVar(&enableObservability, "enable-observability", false, "Enable enhanced observability features")
+
+	cmd.Flags().StringVar(&securityFeatures, "security-features", "", "Comma-separated list of security features (input_validation,rate_limiting,secure_headers,vulnerability_scanning,policy_enforcement)")
+	cmd.Flags().StringVar(&complianceFrameworks, "compliance-frameworks", "", "Comma-separated list of compliance frameworks (soc2,gdpr,hipaa,pci_dss)")
+	cmd.Flags().StringVar(&authFeatures, "auth-features", "", "Comma-separated list of auth features (rbac,ldap,sso,mfa,vault,session_management)")
+	cmd.Flags().StringVar(&observabilityFeatures, "observability-features", "", "Comma-separated list of observability features (apm,infrastructure,custom_metrics,health_checks,opentelemetry,audit_logging,tracing)")
+
 	return cmd
 }
 
@@ -218,8 +259,102 @@ func getTemplateSource(templateUrl, templateDir string) (fs.FS, string, string, 
 
 // Define custom template functions
 var funcMap = template.FuncMap{
-	"lower": strings.ToLower,
-	"now":   time.Now, // Add now function
+	"lower":          strings.ToLower,
+	"now":            time.Now, // Add now function
+	"hasFeature":     hasFeature,
+	"splitFeatures":  splitFeatures,
+	"joinFeatures":   joinFeatures,
+	"featureEnabled": featureEnabled,
+	"default":        defaultValue,
+}
+
+// Template functions for feature toggle support
+
+// hasFeature checks if a specific feature is present in a comma-separated list
+func hasFeature(featureList, feature string) bool {
+	if featureList == "" {
+		return false
+	}
+	features := strings.Split(featureList, ",")
+	for _, f := range features {
+		if strings.TrimSpace(f) == feature {
+			return true
+		}
+	}
+	return false
+}
+
+// splitFeatures splits a comma-separated feature list into a slice
+func splitFeatures(featureList string) []string {
+	if featureList == "" {
+		return []string{}
+	}
+	features := strings.Split(featureList, ",")
+	var result []string
+	for _, f := range features {
+		if trimmed := strings.TrimSpace(f); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+// joinFeatures joins a slice of features into a comma-separated string
+func joinFeatures(features []string) string {
+	return strings.Join(features, ",")
+}
+
+// featureEnabled checks if a feature is enabled based on template data
+func featureEnabled(data map[string]interface{}, category, feature string) bool {
+	switch category {
+	case "security":
+		if enabled, ok := data["EnableSecurity"].(bool); !ok || !enabled {
+			return false
+		}
+		if featureList, ok := data["SecurityFeatures"].(string); ok {
+			return hasFeature(featureList, feature)
+		}
+	case "compliance":
+		if enabled, ok := data["EnableCompliance"].(bool); !ok || !enabled {
+			return false
+		}
+		if featureList, ok := data["ComplianceFrameworks"].(string); ok {
+			return hasFeature(featureList, feature)
+		}
+	case "auth":
+		if enabled, ok := data["EnableAuth"].(bool); !ok || !enabled {
+			return false
+		}
+		if featureList, ok := data["AuthFeatures"].(string); ok {
+			return hasFeature(featureList, feature)
+		}
+	case "observability":
+		if enabled, ok := data["EnableObservability"].(bool); !ok || !enabled {
+			return false
+		}
+		if featureList, ok := data["ObservabilityFeatures"].(string); ok {
+			return hasFeature(featureList, feature)
+		}
+	}
+	return false
+}
+
+// defaultValue provides a default value if the input is empty or nil
+func defaultValue(defaultVal, value interface{}) interface{} {
+	if value == nil {
+		return defaultVal
+	}
+
+	// Handle string values
+	if str, ok := value.(string); ok {
+		if str == "" {
+			return defaultVal
+		}
+		return str
+	}
+
+	// For other types, return the value if it's not nil
+	return value
 }
 
 // --- Refactored createMixin and Helper Functions ---
@@ -244,6 +379,11 @@ func createMixin(data map[string]interface{}, tmplFS fs.FS, templateRoot, output
 		// Calculate destination path and check if the file/dir should be skipped
 		destRelPath, skip := calculateDestPath(path, templateRoot, config.Ignore)
 		if skip {
+			// Special case: if this is the template root directory itself, don't return fs.SkipDir
+			// because that would skip the entire tree. Just continue to the next iteration.
+			if path == templateRoot && d.IsDir() {
+				return nil // Continue walking the directory contents
+			}
 			if d.IsDir() {
 				return fs.SkipDir // Skip ignored directories entirely
 			}
@@ -679,6 +819,60 @@ func buildTemplateData(config *TemplateConfig, name, author, modulePath, outputD
 			}
 		}
 	}
+
+	// Always add enterprise feature flags (default to false for backward compatibility)
+	if _, exists := data["EnableSecurity"]; !exists {
+		data["EnableSecurity"] = false
+	}
+	if _, exists := data["EnableCompliance"]; !exists {
+		data["EnableCompliance"] = false
+	}
+	if _, exists := data["EnableAuth"]; !exists {
+		data["EnableAuth"] = false
+	}
+	if _, exists := data["EnableObservability"]; !exists {
+		data["EnableObservability"] = false
+	}
+
+	// Always add enterprise feature lists (default to empty)
+	if _, exists := data["SecurityFeatures"]; !exists {
+		data["SecurityFeatures"] = ""
+	}
+	if _, exists := data["ComplianceFrameworks"]; !exists {
+		data["ComplianceFrameworks"] = ""
+	}
+	if _, exists := data["AuthFeatures"]; !exists {
+		data["AuthFeatures"] = ""
+	}
+	if _, exists := data["ObservabilityFeatures"]; !exists {
+		data["ObservabilityFeatures"] = ""
+	}
+
+	return data, nil
+}
+
+// buildTemplateDataWithFeatures creates template data with enterprise feature toggles
+func buildTemplateDataWithFeatures(config *TemplateConfig, name, author, modulePath, outputDir, complianceLevel string, nonInteractive bool, extraVars []string,
+	enableSecurity, enableCompliance, enableAuth, enableObservability bool,
+	securityFeatures, complianceFrameworks, authFeatures, observabilityFeatures string) (map[string]interface{}, error) {
+
+	// First build the base template data
+	data, err := buildTemplateData(config, name, author, modulePath, outputDir, complianceLevel, nonInteractive, extraVars)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add enterprise feature toggle data
+	data["EnableSecurity"] = enableSecurity
+	data["EnableCompliance"] = enableCompliance
+	data["EnableAuth"] = enableAuth
+	data["EnableObservability"] = enableObservability
+
+	data["SecurityFeatures"] = securityFeatures
+	data["ComplianceFrameworks"] = complianceFrameworks
+	data["AuthFeatures"] = authFeatures
+	data["ObservabilityFeatures"] = observabilityFeatures
+
 	return data, nil
 }
 

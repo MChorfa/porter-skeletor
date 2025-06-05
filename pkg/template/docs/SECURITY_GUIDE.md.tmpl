@@ -1,0 +1,287 @@
+# Security Guide for {{ .MixinName }} Mixin
+
+This guide covers the enterprise security features available in the {{ .MixinName }} mixin.
+
+## Overview
+
+The {{ .MixinName }} mixin includes comprehensive security features designed to protect your Porter deployments and meet enterprise security requirements.
+
+## Security Features
+
+### Input Validation
+
+{{ if hasFeature .SecurityFeatures "input_validation" }}
+Input validation is **enabled** for this mixin. All user inputs are validated against predefined patterns and length limits.
+
+#### Configuration
+
+```yaml
+security:
+  input_validation:
+    enabled: true
+    max_input_length: 10000
+    allowed_patterns:
+      - "^[a-zA-Z0-9_-]+$"
+      - "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+```
+
+#### Usage
+
+The input validation middleware automatically validates all incoming requests. Custom validation rules can be added by modifying the security configuration.
+{{ else }}
+Input validation is **disabled** for this mixin. To enable it, set `EnableSecurity: true` and include `input_validation` in `SecurityFeatures` when generating the mixin.
+{{ end }}
+
+### Rate Limiting
+
+{{ if hasFeature .SecurityFeatures "rate_limiting" }}
+Rate limiting is **enabled** to protect against DDoS attacks and abuse.
+
+#### Configuration
+
+```yaml
+security:
+  rate_limiting:
+    enabled: true
+    requests_per_second: 100.0
+    burst_size: 200
+    window_size: "1m"
+```
+
+#### Monitoring
+
+Rate limiting metrics are exposed via Prometheus:
+- `rate_limit_hits_total`: Total number of rate limit hits
+- `rate_limit_tokens`: Current number of available tokens
+{{ else }}
+Rate limiting is **disabled** for this mixin. To enable it, include `rate_limiting` in `SecurityFeatures` when generating the mixin.
+{{ end }}
+
+### Secure Headers
+
+{{ if hasFeature .SecurityFeatures "secure_headers" }}
+Security headers are **enabled** to protect against common web vulnerabilities.
+
+#### Headers Applied
+
+- **HSTS**: Enforces HTTPS connections
+- **Content-Security-Policy**: Prevents XSS attacks
+- **X-Frame-Options**: Prevents clickjacking
+- **X-Content-Type-Options**: Prevents MIME type sniffing
+- **X-XSS-Protection**: Enables XSS filtering
+- **Referrer-Policy**: Controls referrer information
+
+#### Configuration
+
+```yaml
+security:
+  secure_headers:
+    enabled: true
+    hsts:
+      enabled: true
+      max_age: 31536000
+      include_subdomains: true
+    content_security_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'"
+    x_frame_options: "DENY"
+    x_content_type_options: "nosniff"
+```
+{{ else }}
+Secure headers are **disabled** for this mixin. To enable them, include `secure_headers` in `SecurityFeatures` when generating the mixin.
+{{ end }}
+
+### Vulnerability Scanning
+
+{{ if hasFeature .SecurityFeatures "vulnerability_scanning" }}
+Vulnerability scanning is **enabled** to detect security issues in dependencies and container images.
+
+#### Supported Scanners
+
+- **Trivy**: Container image and filesystem scanning
+- **Snyk**: Dependency vulnerability scanning
+- **Clair**: Container image scanning
+
+#### Configuration
+
+```yaml
+security:
+  vulnerability_scanning:
+    enabled: true
+    scan_interval: "24h"
+    scan_targets:
+      - "dependencies"
+      - "container_images"
+      - "source_code"
+    fail_on_critical: true
+    fail_on_high: false
+```
+
+#### CI/CD Integration
+
+Vulnerability scanning is integrated into the CI/CD pipeline and will fail builds if critical vulnerabilities are detected.
+{{ else }}
+Vulnerability scanning is **disabled** for this mixin. To enable it, include `vulnerability_scanning` in `SecurityFeatures` when generating the mixin.
+{{ end }}
+
+### Policy Enforcement
+
+{{ if hasFeature .SecurityFeatures "policy_enforcement" }}
+Policy enforcement is **enabled** to control access to resources and actions.
+
+#### Policy Types
+
+- **API Access Policies**: Control access to API endpoints
+- **Data Access Policies**: Control access to sensitive data
+- **Time-based Policies**: Restrict access during certain hours
+- **Custom Policies**: Define your own access rules
+
+#### Configuration
+
+```yaml
+security:
+  policy_enforcement:
+    enabled: true
+    default_deny: false
+    policies:
+      api_access:
+        name: "API Access Policy"
+        description: "Controls access to API endpoints"
+        rules:
+          - id: "api_auth_required"
+            description: "All API calls must be authenticated"
+            condition: "authenticated == true"
+            severity: "high"
+```
+
+#### Policy Language
+
+Policies use a simple condition language that supports:
+- Boolean operators: `AND`, `OR`, `NOT`
+- Comparison operators: `==`, `!=`, `>`, `<`, `>=`, `<=`
+- String operations: `contains`, `startsWith`, `endsWith`
+- Time functions: `time.hour`, `time.weekday`
+{{ else }}
+Policy enforcement is **disabled** for this mixin. To enable it, include `policy_enforcement` in `SecurityFeatures` when generating the mixin.
+{{ end }}
+
+## Security Best Practices
+
+### 1. Regular Updates
+
+Keep your mixin and its dependencies up to date:
+
+```bash
+# Update the mixin
+porter mixin install {{ .MixinName }} --version latest
+
+# Update dependencies
+go mod tidy
+go mod download
+```
+
+### 2. Secure Configuration
+
+- Use environment variables for sensitive configuration
+- Enable TLS for all network communications
+- Implement proper authentication and authorization
+- Regular security audits and penetration testing
+
+### 3. Monitoring and Alerting
+
+Set up monitoring for security events:
+
+```yaml
+monitoring:
+  security_events:
+    enabled: true
+    alert_on:
+      - "rate_limit_exceeded"
+      - "policy_violation"
+      - "input_validation_failure"
+      - "vulnerability_detected"
+```
+
+### 4. Incident Response
+
+Have an incident response plan in place:
+
+1. **Detection**: Monitor security events and alerts
+2. **Analysis**: Investigate security incidents
+3. **Containment**: Isolate affected systems
+4. **Recovery**: Restore normal operations
+5. **Lessons Learned**: Update security measures
+
+## Security Compliance
+
+{{ if .EnableCompliance }}
+This mixin supports various compliance frameworks:
+
+{{ if hasFeature .ComplianceFrameworks "soc2" }}
+- **SOC 2**: System and Organization Controls 2
+{{ end }}
+{{ if hasFeature .ComplianceFrameworks "gdpr" }}
+- **GDPR**: General Data Protection Regulation
+{{ end }}
+{{ if hasFeature .ComplianceFrameworks "hipaa" }}
+- **HIPAA**: Health Insurance Portability and Accountability Act
+{{ end }}
+{{ if hasFeature .ComplianceFrameworks "pci_dss" }}
+- **PCI DSS**: Payment Card Industry Data Security Standard
+{{ end }}
+
+See the [Compliance Guide](COMPLIANCE_GUIDE.md) for detailed information.
+{{ else }}
+Compliance features are disabled for this mixin. To enable them, set `EnableCompliance: true` when generating the mixin.
+{{ end }}
+
+## Troubleshooting
+
+### Common Issues
+
+#### Rate Limiting Errors
+
+If you're experiencing rate limiting errors:
+
+1. Check the current rate limit configuration
+2. Increase the rate limit if necessary
+3. Implement request queuing or retry logic
+4. Monitor rate limit metrics
+
+#### Policy Violations
+
+If policies are blocking legitimate requests:
+
+1. Review the policy configuration
+2. Check the policy evaluation logs
+3. Update policies as needed
+4. Test policy changes in a development environment
+
+#### Vulnerability Scan Failures
+
+If vulnerability scans are failing builds:
+
+1. Review the vulnerability report
+2. Update affected dependencies
+3. Apply security patches
+4. Consider adding exceptions for false positives
+
+### Getting Help
+
+- Check the [troubleshooting documentation](https://porter.sh/troubleshooting/)
+- Search existing [GitHub issues](https://github.com/getporter/{{ .MixinName }}/issues)
+- Join the [Porter community](https://porter.sh/community/)
+- Contact support at {{ .AuthorEmail | default "support@example.com" }}
+
+## Security Contact
+
+For security-related issues, please contact:
+
+- **Email**: {{ .AuthorEmail | default "security@example.com" }}
+- **Security Policy**: [SECURITY.md](../SECURITY.md)
+- **Vulnerability Disclosure**: Follow responsible disclosure practices
+
+## Additional Resources
+
+- [Porter Security Documentation](https://porter.sh/docs/security/)
+- [OWASP Security Guidelines](https://owasp.org/)
+- [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
+- [CIS Controls](https://www.cisecurity.org/controls/)

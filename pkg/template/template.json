@@ -54,6 +54,46 @@
       "type": "string",
       "default": "basic",
       "choices": ["basic", "slsa-l1", "slsa-l3"]
+    },
+    "EnableSecurity": {
+      "description": "Enable enterprise security features",
+      "type": "bool",
+      "default": false
+    },
+    "EnableCompliance": {
+      "description": "Enable compliance framework features",
+      "type": "bool",
+      "default": false
+    },
+    "EnableAuth": {
+      "description": "Enable authentication and authorization features",
+      "type": "bool",
+      "default": false
+    },
+    "EnableObservability": {
+      "description": "Enable enhanced observability features",
+      "type": "bool",
+      "default": false
+    },
+    "SecurityFeatures": {
+      "description": "Comma-separated list of security features to enable (input_validation,rate_limiting,secure_headers,vulnerability_scanning,policy_enforcement)",
+      "type": "string",
+      "default": ""
+    },
+    "ComplianceFrameworks": {
+      "description": "Comma-separated list of compliance frameworks to enable (soc2,gdpr,hipaa,pci_dss)",
+      "type": "string",
+      "default": ""
+    },
+    "AuthFeatures": {
+      "description": "Comma-separated list of auth features to enable (rbac,ldap,sso,mfa,vault,session_management)",
+      "type": "string",
+      "default": ""
+    },
+    "ObservabilityFeatures": {
+      "description": "Comma-separated list of observability features to enable (apm,infrastructure,custom_metrics,health_checks,opentelemetry,audit_logging,tracing)",
+      "type": "string",
+      "default": ""
     }
   },
   "hooks": {
@@ -70,6 +110,14 @@
     "cmd/mixin/README.md"
   ],
   "conditional_paths": {
-    ".golangci.yml": "{{ if eq .ComplianceLevel \"slsa-l3\" }}.golangci-strict.yml.tmpl{{ else }}.golangci.yml.tmpl{{ end }}"
+    ".golangci.yml": "{{ if eq .ComplianceLevel \"slsa-l3\" }}.golangci-strict.yml.tmpl{{ else }}.golangci.yml.tmpl{{ end }}",
+    "pkg/security": "{{ if .EnableSecurity }}pkg/security{{ else }}{{ end }}",
+    "pkg/compliance": "{{ if .EnableCompliance }}pkg/compliance{{ else }}{{ end }}",
+    "pkg/auth": "{{ if .EnableAuth }}pkg/auth{{ else }}{{ end }}",
+    "pkg/observability": "{{ if .EnableObservability }}pkg/observability{{ else }}{{ end }}",
+    "configs/security.yaml": "{{ if .EnableSecurity }}configs/security.yaml.tmpl{{ else }}{{ end }}",
+    "configs/compliance.yaml": "{{ if .EnableCompliance }}configs/compliance.yaml.tmpl{{ else }}{{ end }}",
+    "configs/auth.yaml": "{{ if .EnableAuth }}configs/auth.yaml.tmpl{{ else }}{{ end }}",
+    "configs/observability.yaml": "{{ if .EnableObservability }}configs/observability.yaml.tmpl{{ else }}{{ end }}"
   }
 }

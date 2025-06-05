@@ -1,0 +1,167 @@
+# Security Configuration for {{ .MixinName }} Mixin
+# This file configures enterprise security features
+
+security:
+  # Input validation settings
+  input_validation:
+    enabled: {{ if hasFeature .SecurityFeatures "input_validation" }}true{{ else }}false{{ end }}
+    max_input_length: 10000
+    allowed_patterns:
+      - "^[a-zA-Z0-9_-]+$"  # Alphanumeric with underscore and dash
+      - "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"  # Email pattern
+
+  # Rate limiting settings
+  rate_limiting:
+    enabled: {{ if hasFeature .SecurityFeatures "rate_limiting" }}true{{ else }}false{{ end }}
+    requests_per_second: 100.0
+    burst_size: 200
+    window_size: "1m"
+
+  # Secure headers settings
+  secure_headers:
+    enabled: {{ if hasFeature .SecurityFeatures "secure_headers" }}true{{ else }}false{{ end }}
+    hsts:
+      enabled: true
+      max_age: 31536000  # 1 year
+      include_subdomains: true
+    content_security_policy: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    x_frame_options: "DENY"
+    x_content_type_options: "nosniff"
+
+  # Vulnerability scanning settings
+  vulnerability_scanning:
+    enabled: {{ if hasFeature .SecurityFeatures "vulnerability_scanning" }}true{{ else }}false{{ end }}
+    scan_interval: "24h"
+    scan_targets:
+      - "dependencies"
+      - "container_images"
+      - "source_code"
+    fail_on_critical: true
+    fail_on_high: false
+
+  # Policy enforcement settings
+  policy_enforcement:
+    enabled: {{ if hasFeature .SecurityFeatures "policy_enforcement" }}true{{ else }}false{{ end }}
+    default_deny: false
+    policies:
+      api_access:
+        name: "API Access Policy"
+        description: "Controls access to API endpoints"
+        rules:
+          - id: "api_auth_required"
+            description: "All API calls must be authenticated"
+            condition: "authenticated == true"
+            severity: "high"
+            metadata:
+              category: "authentication"
+        actions:
+          - "GET"
+          - "POST"
+          - "PUT"
+          - "DELETE"
+        metadata:
+          version: "1.0"
+          
+      data_access:
+        name: "Data Access Policy"
+        description: "Controls access to sensitive data"
+        rules:
+          - id: "data_classification_check"
+            description: "Check data classification before access"
+            condition: "data_classification in ['public', 'internal']"
+            severity: "critical"
+            metadata:
+              category: "data_protection"
+        actions:
+          - "read"
+          - "write"
+          - "delete"
+        metadata:
+          version: "1.0"
+
+# Security monitoring and alerting
+monitoring:
+  security_events:
+    enabled: true
+    log_level: "info"
+    alert_on:
+      - "rate_limit_exceeded"
+      - "policy_violation"
+      - "input_validation_failure"
+      - "vulnerability_detected"
+    
+  metrics:
+    enabled: true
+    collection_interval: "30s"
+    metrics:
+      - "security_events_total"
+      - "rate_limit_hits_total"
+      - "policy_violations_total"
+      - "input_validation_failures_total"
+
+# Integration settings
+integrations:
+  # SIEM integration
+  siem:
+    enabled: false
+    endpoint: ""
+    api_key: ""
+    format: "json"
+    
+  # Vulnerability scanner integration
+  vulnerability_scanner:
+    enabled: {{ if hasFeature .SecurityFeatures "vulnerability_scanning" }}true{{ else }}false{{ end }}
+    provider: "trivy"  # Options: trivy, snyk, clair
+    config:
+      trivy:
+        cache_dir: "/tmp/trivy-cache"
+        timeout: "5m"
+        severity: ["CRITICAL", "HIGH"]
+      snyk:
+        api_token: ""
+        org_id: ""
+      clair:
+        endpoint: "http://clair:6060"
+
+# Compliance settings
+compliance:
+  # Enable compliance reporting
+  reporting:
+    enabled: true
+    formats: ["json", "html"]
+    output_dir: "./security-reports"
+    
+  # Security standards compliance
+  standards:
+    cis_benchmarks:
+      enabled: false
+      version: "1.6.0"
+    nist_csf:
+      enabled: false
+      version: "1.1"
+    iso27001:
+      enabled: false
+      version: "2013"
+
+# Development and testing settings
+development:
+  # Security testing
+  security_testing:
+    enabled: true
+    static_analysis:
+      enabled: true
+      tools: ["gosec", "semgrep"]
+    dynamic_analysis:
+      enabled: false
+      tools: ["zap"]
+    dependency_scanning:
+      enabled: true
+      tools: ["govulncheck", "nancy"]
+      
+  # Security training and awareness
+  training:
+    enabled: false
+    modules:
+      - "secure_coding"
+      - "threat_modeling"
+      - "incident_response"

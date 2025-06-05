@@ -22,6 +22,69 @@ type TemplateConfig struct {
 	Hooks            map[string][]string `json:"hooks"`
 	Ignore           []string            `json:"ignore"`
 	ConditionalPaths map[string]string   `json:"conditional_paths,omitempty"` // Map of relative path -> Go template condition string
+	FeatureToggles   *FeatureToggles     `json:"feature_toggles,omitempty"`   // Enterprise feature toggle configuration
+}
+
+// FeatureToggles represents enterprise feature toggle configuration
+type FeatureToggles struct {
+	Security      *SecurityFeatures      `json:"security,omitempty"`
+	Compliance    *ComplianceFeatures    `json:"compliance,omitempty"`
+	Auth          *AuthFeatures          `json:"auth,omitempty"`
+	Observability *ObservabilityFeatures `json:"observability,omitempty"`
+}
+
+// SecurityFeatures represents security-related feature toggles
+type SecurityFeatures struct {
+	Enabled               bool `json:"enabled"`
+	InputValidation       bool `json:"input_validation"`
+	RateLimiting          bool `json:"rate_limiting"`
+	SecureHeaders         bool `json:"secure_headers"`
+	VulnerabilityScanning bool `json:"vulnerability_scanning"`
+	PolicyEnforcement     bool `json:"policy_enforcement"`
+}
+
+// ComplianceFeatures represents compliance framework feature toggles
+type ComplianceFeatures struct {
+	Enabled  bool                    `json:"enabled"`
+	SOC2     bool                    `json:"soc2"`
+	GDPR     bool                    `json:"gdpr"`
+	HIPAA    bool                    `json:"hipaa"`
+	PCIDSS   bool                    `json:"pci_dss"`
+	Custom   map[string]bool         `json:"custom,omitempty"`
+	Policies map[string]PolicyConfig `json:"policies,omitempty"`
+}
+
+// AuthFeatures represents authentication and authorization feature toggles
+type AuthFeatures struct {
+	Enabled      bool            `json:"enabled"`
+	RBAC         bool            `json:"rbac"`
+	LDAP         bool            `json:"ldap"`
+	SSO          bool            `json:"sso"`
+	MFA          bool            `json:"mfa"`
+	Vault        bool            `json:"vault"`
+	SessionMgmt  bool            `json:"session_management"`
+	Integrations map[string]bool `json:"integrations,omitempty"`
+}
+
+// ObservabilityFeatures represents observability and monitoring feature toggles
+type ObservabilityFeatures struct {
+	Enabled        bool            `json:"enabled"`
+	APM            bool            `json:"apm"`
+	Infrastructure bool            `json:"infrastructure"`
+	CustomMetrics  bool            `json:"custom_metrics"`
+	HealthChecks   bool            `json:"health_checks"`
+	OpenTelemetry  bool            `json:"opentelemetry"`
+	AuditLogging   bool            `json:"audit_logging"`
+	Tracing        bool            `json:"tracing"`
+	Backends       map[string]bool `json:"backends,omitempty"`
+}
+
+// PolicyConfig represents configuration for compliance policies
+type PolicyConfig struct {
+	Enabled    bool     `json:"enabled"`
+	Severity   string   `json:"severity"`
+	Rules      []string `json:"rules,omitempty"`
+	Exceptions []string `json:"exceptions,omitempty"`
 }
 
 // Variable represents a template variable with its properties
@@ -172,3 +235,256 @@ func createCommand(name string, args ...string) *exec.Cmd {
 }
 
 // Removed duplicate buildTemplateData function. The correct one is in main.go.
+
+// Feature toggle evaluation functions
+
+// IsFeatureEnabled checks if a specific feature is enabled based on the feature toggle configuration
+func (ft *FeatureToggles) IsFeatureEnabled(category, feature string) bool {
+	if ft == nil {
+		return false
+	}
+
+	switch category {
+	case "security":
+		return ft.isSecurityFeatureEnabled(feature)
+	case "compliance":
+		return ft.isComplianceFeatureEnabled(feature)
+	case "auth":
+		return ft.isAuthFeatureEnabled(feature)
+	case "observability":
+		return ft.isObservabilityFeatureEnabled(feature)
+	default:
+		return false
+	}
+}
+
+// isSecurityFeatureEnabled checks if a security feature is enabled
+func (ft *FeatureToggles) isSecurityFeatureEnabled(feature string) bool {
+	if ft.Security == nil || !ft.Security.Enabled {
+		return false
+	}
+
+	switch feature {
+	case "input_validation":
+		return ft.Security.InputValidation
+	case "rate_limiting":
+		return ft.Security.RateLimiting
+	case "secure_headers":
+		return ft.Security.SecureHeaders
+	case "vulnerability_scanning":
+		return ft.Security.VulnerabilityScanning
+	case "policy_enforcement":
+		return ft.Security.PolicyEnforcement
+	default:
+		return false
+	}
+}
+
+// isComplianceFeatureEnabled checks if a compliance feature is enabled
+func (ft *FeatureToggles) isComplianceFeatureEnabled(feature string) bool {
+	if ft.Compliance == nil || !ft.Compliance.Enabled {
+		return false
+	}
+
+	switch feature {
+	case "soc2":
+		return ft.Compliance.SOC2
+	case "gdpr":
+		return ft.Compliance.GDPR
+	case "hipaa":
+		return ft.Compliance.HIPAA
+	case "pci_dss":
+		return ft.Compliance.PCIDSS
+	default:
+		// Check custom compliance features
+		if ft.Compliance.Custom != nil {
+			return ft.Compliance.Custom[feature]
+		}
+		return false
+	}
+}
+
+// isAuthFeatureEnabled checks if an authentication feature is enabled
+func (ft *FeatureToggles) isAuthFeatureEnabled(feature string) bool {
+	if ft.Auth == nil || !ft.Auth.Enabled {
+		return false
+	}
+
+	switch feature {
+	case "rbac":
+		return ft.Auth.RBAC
+	case "ldap":
+		return ft.Auth.LDAP
+	case "sso":
+		return ft.Auth.SSO
+	case "mfa":
+		return ft.Auth.MFA
+	case "vault":
+		return ft.Auth.Vault
+	case "session_management":
+		return ft.Auth.SessionMgmt
+	default:
+		// Check integration-specific features
+		if ft.Auth.Integrations != nil {
+			return ft.Auth.Integrations[feature]
+		}
+		return false
+	}
+}
+
+// isObservabilityFeatureEnabled checks if an observability feature is enabled
+func (ft *FeatureToggles) isObservabilityFeatureEnabled(feature string) bool {
+	if ft.Observability == nil || !ft.Observability.Enabled {
+		return false
+	}
+
+	switch feature {
+	case "apm":
+		return ft.Observability.APM
+	case "infrastructure":
+		return ft.Observability.Infrastructure
+	case "custom_metrics":
+		return ft.Observability.CustomMetrics
+	case "health_checks":
+		return ft.Observability.HealthChecks
+	case "opentelemetry":
+		return ft.Observability.OpenTelemetry
+	case "audit_logging":
+		return ft.Observability.AuditLogging
+	case "tracing":
+		return ft.Observability.Tracing
+	default:
+		// Check backend-specific features
+		if ft.Observability.Backends != nil {
+			return ft.Observability.Backends[feature]
+		}
+		return false
+	}
+}
+
+// GetEnabledFeatures returns a map of all enabled features organized by category
+func (ft *FeatureToggles) GetEnabledFeatures() map[string][]string {
+	enabled := make(map[string][]string)
+
+	if ft == nil {
+		return enabled
+	}
+
+	// Security features
+	if ft.Security != nil && ft.Security.Enabled {
+		var securityFeatures []string
+		if ft.Security.InputValidation {
+			securityFeatures = append(securityFeatures, "input_validation")
+		}
+		if ft.Security.RateLimiting {
+			securityFeatures = append(securityFeatures, "rate_limiting")
+		}
+		if ft.Security.SecureHeaders {
+			securityFeatures = append(securityFeatures, "secure_headers")
+		}
+		if ft.Security.VulnerabilityScanning {
+			securityFeatures = append(securityFeatures, "vulnerability_scanning")
+		}
+		if ft.Security.PolicyEnforcement {
+			securityFeatures = append(securityFeatures, "policy_enforcement")
+		}
+		if len(securityFeatures) > 0 {
+			enabled["security"] = securityFeatures
+		}
+	}
+
+	// Compliance features
+	if ft.Compliance != nil && ft.Compliance.Enabled {
+		var complianceFeatures []string
+		if ft.Compliance.SOC2 {
+			complianceFeatures = append(complianceFeatures, "soc2")
+		}
+		if ft.Compliance.GDPR {
+			complianceFeatures = append(complianceFeatures, "gdpr")
+		}
+		if ft.Compliance.HIPAA {
+			complianceFeatures = append(complianceFeatures, "hipaa")
+		}
+		if ft.Compliance.PCIDSS {
+			complianceFeatures = append(complianceFeatures, "pci_dss")
+		}
+		// Add custom compliance features
+		for feature, enabled := range ft.Compliance.Custom {
+			if enabled {
+				complianceFeatures = append(complianceFeatures, feature)
+			}
+		}
+		if len(complianceFeatures) > 0 {
+			enabled["compliance"] = complianceFeatures
+		}
+	}
+
+	// Auth features
+	if ft.Auth != nil && ft.Auth.Enabled {
+		var authFeatures []string
+		if ft.Auth.RBAC {
+			authFeatures = append(authFeatures, "rbac")
+		}
+		if ft.Auth.LDAP {
+			authFeatures = append(authFeatures, "ldap")
+		}
+		if ft.Auth.SSO {
+			authFeatures = append(authFeatures, "sso")
+		}
+		if ft.Auth.MFA {
+			authFeatures = append(authFeatures, "mfa")
+		}
+		if ft.Auth.Vault {
+			authFeatures = append(authFeatures, "vault")
+		}
+		if ft.Auth.SessionMgmt {
+			authFeatures = append(authFeatures, "session_management")
+		}
+		// Add integration-specific features
+		for feature, enabled := range ft.Auth.Integrations {
+			if enabled {
+				authFeatures = append(authFeatures, feature)
+			}
+		}
+		if len(authFeatures) > 0 {
+			enabled["auth"] = authFeatures
+		}
+	}
+
+	// Observability features
+	if ft.Observability != nil && ft.Observability.Enabled {
+		var obsFeatures []string
+		if ft.Observability.APM {
+			obsFeatures = append(obsFeatures, "apm")
+		}
+		if ft.Observability.Infrastructure {
+			obsFeatures = append(obsFeatures, "infrastructure")
+		}
+		if ft.Observability.CustomMetrics {
+			obsFeatures = append(obsFeatures, "custom_metrics")
+		}
+		if ft.Observability.HealthChecks {
+			obsFeatures = append(obsFeatures, "health_checks")
+		}
+		if ft.Observability.OpenTelemetry {
+			obsFeatures = append(obsFeatures, "opentelemetry")
+		}
+		if ft.Observability.AuditLogging {
+			obsFeatures = append(obsFeatures, "audit_logging")
+		}
+		if ft.Observability.Tracing {
+			obsFeatures = append(obsFeatures, "tracing")
+		}
+		// Add backend-specific features
+		for feature, enabled := range ft.Observability.Backends {
+			if enabled {
+				obsFeatures = append(obsFeatures, feature)
+			}
+		}
+		if len(obsFeatures) > 0 {
+			enabled["observability"] = obsFeatures
+		}
+	}
+
+	return enabled
+}

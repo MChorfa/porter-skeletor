@@ -1,0 +1,458 @@
+package observability
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"time"
+
+	"get.porter.sh/porter/pkg/tracing"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/jaeger"
+	promexporter "go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+)
+
+// ObservabilityConfig holds observability configuration
+type ObservabilityConfig struct {
+	Enabled           bool                    `json:"enabled" yaml:"enabled"`
+	APM               APMConfig               `json:"apm" yaml:"apm"`
+	Infrastructure    InfrastructureConfig    `json:"infrastructure" yaml:"infrastructure"`
+	CustomMetrics     CustomMetricsConfig     `json:"custom_metrics" yaml:"custom_metrics"`
+	HealthChecks      HealthChecksConfig      `json:"health_checks" yaml:"health_checks"`
+	OpenTelemetry     OpenTelemetryConfig     `json:"opentelemetry" yaml:"opentelemetry"`
+	AuditLogging      AuditLoggingConfig      `json:"audit_logging" yaml:"audit_logging"`
+	Tracing           TracingConfig           `json:"tracing" yaml:"tracing"`
+}
+
+// APMConfig holds Application Performance Monitoring configuration
+type APMConfig struct {
+	Enabled  bool              `json:"enabled" yaml:"enabled"`
+	Provider string            `json:"provider" yaml:"provider"` // datadog, newrelic, elastic
+	Config   map[string]string `json:"config" yaml:"config"`
+}
+
+// InfrastructureConfig holds infrastructure monitoring configuration
+type InfrastructureConfig struct {
+	Enabled    bool              `json:"enabled" yaml:"enabled"`
+	Collectors []string          `json:"collectors" yaml:"collectors"`
+	Interval   time.Duration     `json:"interval" yaml:"interval"`
+	Config     map[string]string `json:"config" yaml:"config"`
+}
+
+// CustomMetricsConfig holds custom metrics configuration
+type CustomMetricsConfig struct {
+	Enabled bool                    `json:"enabled" yaml:"enabled"`
+	Metrics map[string]MetricConfig `json:"metrics" yaml:"metrics"`
+}
+
+// MetricConfig represents a custom metric configuration
+type MetricConfig struct {
+	Name        string            `json:"name" yaml:"name"`
+	Type        string            `json:"type" yaml:"type"` // counter, gauge, histogram, summary
+	Description string            `json:"description" yaml:"description"`
+	Labels      []string          `json:"labels" yaml:"labels"`
+	Buckets     []float64         `json:"buckets,omitempty" yaml:"buckets,omitempty"`
+	Objectives  map[float64]float64 `json:"objectives,omitempty" yaml:"objectives,omitempty"`
+}
+
+// HealthChecksConfig holds health check configuration
+type HealthChecksConfig struct {
+	Enabled   bool                    `json:"enabled" yaml:"enabled"`
+	Endpoint  string                  `json:"endpoint" yaml:"endpoint"`
+	Interval  time.Duration           `json:"interval" yaml:"interval"`
+	Timeout   time.Duration           `json:"timeout" yaml:"timeout"`
+	Checks    map[string]HealthCheck  `json:"checks" yaml:"checks"`
+}
+
+// HealthCheck represents a health check
+type HealthCheck struct {
+	Name        string            `json:"name" yaml:"name"`
+	Type        string            `json:"type" yaml:"type"` // http, tcp, exec, custom
+	Target      string            `json:"target" yaml:"target"`
+	Timeout     time.Duration     `json:"timeout" yaml:"timeout"`
+	Interval    time.Duration     `json:"interval" yaml:"interval"`
+	Retries     int               `json:"retries" yaml:"retries"`
+	Config      map[string]string `json:"config" yaml:"config"`
+}
+
+// OpenTelemetryConfig holds OpenTelemetry configuration
+type OpenTelemetryConfig struct {
+	Enabled     bool                    `json:"enabled" yaml:"enabled"`
+	ServiceName string                  `json:"service_name" yaml:"service_name"`
+	Exporters   map[string]ExporterConfig `json:"exporters" yaml:"exporters"`
+	Sampling    SamplingConfig          `json:"sampling" yaml:"sampling"`
+	Resource    ResourceConfig          `json:"resource" yaml:"resource"`
+}
+
+// ExporterConfig holds exporter configuration
+type ExporterConfig struct {
+	Type     string            `json:"type" yaml:"type"` // jaeger, zipkin, otlp, prometheus
+	Endpoint string            `json:"endpoint" yaml:"endpoint"`
+	Headers  map[string]string `json:"headers" yaml:"headers"`
+	Config   map[string]string `json:"config" yaml:"config"`
+}
+
+// SamplingConfig holds sampling configuration
+type SamplingConfig struct {
+	Type  string  `json:"type" yaml:"type"` // always, never, ratio, rate_limiting
+	Value float64 `json:"value" yaml:"value"`
+}
+
+// ResourceConfig holds resource configuration
+type ResourceConfig struct {
+	Attributes map[string]string `json:"attributes" yaml:"attributes"`
+}
+
+// AuditLoggingConfig holds audit logging configuration
+type AuditLoggingConfig struct {
+	Enabled       bool              `json:"enabled" yaml:"enabled"`
+	Format        string            `json:"format" yaml:"format"` // json, text
+	Level         string            `json:"level" yaml:"level"`
+	Output        string            `json:"output" yaml:"output"` // file, stdout, syslog
+	File          string            `json:"file" yaml:"file"`
+	MaxSize       int               `json:"max_size" yaml:"max_size"`
+	MaxBackups    int               `json:"max_backups" yaml:"max_backups"`
+	MaxAge        int               `json:"max_age" yaml:"max_age"`
+	Compress      bool              `json:"compress" yaml:"compress"`
+	Fields        map[string]string `json:"fields" yaml:"fields"`
+}
+
+// TracingConfig holds distributed tracing configuration
+type TracingConfig struct {
+	Enabled     bool              `json:"enabled" yaml:"enabled"`
+	Backend     string            `json:"backend" yaml:"backend"` // jaeger, zipkin, datadog
+	Endpoint    string            `json:"endpoint" yaml:"endpoint"`
+	SampleRate  float64           `json:"sample_rate" yaml:"sample_rate"`
+	Config      map[string]string `json:"config" yaml:"config"`
+}
+
+// ObservabilityManager manages observability features
+type ObservabilityManager struct {
+	config         *ObservabilityConfig
+	tracer         trace.Tracer
+	meter          metric.Meter
+	customMetrics  map[string]interface{}
+	healthChecks   map[string]*HealthCheck
+}
+
+// NewObservabilityManager creates a new observability manager
+func NewObservabilityManager(config *ObservabilityConfig) (*ObservabilityManager, error) {
+	om := &ObservabilityManager{
+		config:        config,
+		customMetrics: make(map[string]interface{}),
+		healthChecks:  make(map[string]*HealthCheck),
+	}
+
+	if config.Enabled {
+		if err := om.initializeOpenTelemetry(); err != nil {
+			return nil, fmt.Errorf("failed to initialize OpenTelemetry: %w", err)
+		}
+
+		if err := om.initializeCustomMetrics(); err != nil {
+			return nil, fmt.Errorf("failed to initialize custom metrics: %w", err)
+		}
+
+		if err := om.initializeHealthChecks(); err != nil {
+			return nil, fmt.Errorf("failed to initialize health checks: %w", err)
+		}
+	}
+
+	return om, nil
+}
+
+// initializeOpenTelemetry initializes OpenTelemetry
+func (om *ObservabilityManager) initializeOpenTelemetry() error {
+	if !om.config.OpenTelemetry.Enabled {
+		return nil
+	}
+
+	// Create resource
+	res, err := resource.New(context.Background(),
+		resource.WithAttributes(
+			semconv.ServiceName(om.config.OpenTelemetry.ServiceName),
+			semconv.ServiceVersion("{{ .Version | default "0.1.0" }}"),
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	// Initialize tracing
+	if om.config.Tracing.Enabled {
+		if err := om.initializeTracing(res); err != nil {
+			return fmt.Errorf("failed to initialize tracing: %w", err)
+		}
+	}
+
+	// Initialize metrics
+	if err := om.initializeMetrics(res); err != nil {
+		return fmt.Errorf("failed to initialize metrics: %w", err)
+	}
+
+	om.tracer = tracing.Tracer("{{ .ModulePath }}/observability")
+	om.meter = otel.Meter("{{ .ModulePath }}/observability")
+
+	return nil
+}
+
+// initializeTracing initializes distributed tracing
+func (om *ObservabilityManager) initializeTracing(res *resource.Resource) error {
+	var exporter trace.SpanExporter
+	var err error
+
+	switch om.config.Tracing.Backend {
+	case "jaeger":
+		exporter, err = jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(om.config.Tracing.Endpoint)))
+	default:
+		return fmt.Errorf("unsupported tracing backend: %s", om.config.Tracing.Backend)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to create trace exporter: %w", err)
+	}
+
+	// Create trace provider
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(om.config.Tracing.SampleRate)),
+	)
+
+	otel.SetTracerProvider(tp)
+	return nil
+}
+
+// initializeMetrics initializes metrics collection
+func (om *ObservabilityManager) initializeMetrics(res *resource.Resource) error {
+	// Create Prometheus exporter
+	promExporter, err := promexporter.New()
+	if err != nil {
+		return fmt.Errorf("failed to create Prometheus exporter: %w", err)
+	}
+
+	// Create meter provider
+	mp := sdkmetric.NewMeterProvider(
+		sdkmetric.WithResource(res),
+		sdkmetric.WithReader(promExporter),
+	)
+
+	otel.SetMeterProvider(mp)
+	return nil
+}
+
+// initializeCustomMetrics initializes custom metrics
+func (om *ObservabilityManager) initializeCustomMetrics() error {
+	if !om.config.CustomMetrics.Enabled {
+		return nil
+	}
+
+	for name, metricConfig := range om.config.CustomMetrics.Metrics {
+		switch metricConfig.Type {
+		case "counter":
+			counter := promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: metricConfig.Name,
+					Help: metricConfig.Description,
+				},
+				metricConfig.Labels,
+			)
+			om.customMetrics[name] = counter
+
+		case "gauge":
+			gauge := promauto.NewGaugeVec(
+				prometheus.GaugeOpts{
+					Name: metricConfig.Name,
+					Help: metricConfig.Description,
+				},
+				metricConfig.Labels,
+			)
+			om.customMetrics[name] = gauge
+
+		case "histogram":
+			histogram := promauto.NewHistogramVec(
+				prometheus.HistogramOpts{
+					Name:    metricConfig.Name,
+					Help:    metricConfig.Description,
+					Buckets: metricConfig.Buckets,
+				},
+				metricConfig.Labels,
+			)
+			om.customMetrics[name] = histogram
+
+		case "summary":
+			summary := promauto.NewSummaryVec(
+				prometheus.SummaryOpts{
+					Name:       metricConfig.Name,
+					Help:       metricConfig.Description,
+					Objectives: metricConfig.Objectives,
+				},
+				metricConfig.Labels,
+			)
+			om.customMetrics[name] = summary
+
+		default:
+			return fmt.Errorf("unsupported metric type: %s", metricConfig.Type)
+		}
+	}
+
+	return nil
+}
+
+// initializeHealthChecks initializes health checks
+func (om *ObservabilityManager) initializeHealthChecks() error {
+	if !om.config.HealthChecks.Enabled {
+		return nil
+	}
+
+	for name, check := range om.config.HealthChecks.Checks {
+		om.healthChecks[name] = &check
+	}
+
+	return nil
+}
+
+// RecordMetric records a custom metric
+func (om *ObservabilityManager) RecordMetric(ctx context.Context, name string, value float64, labels map[string]string) error {
+	ctx, span := om.tracer.Start(ctx, "observability.record_metric")
+	defer span.End()
+
+	metric, exists := om.customMetrics[name]
+	if !exists {
+		return fmt.Errorf("metric not found: %s", name)
+	}
+
+	span.SetAttributes(
+		attribute.String("metric.name", name),
+		attribute.Float64("metric.value", value),
+	)
+
+	labelValues := make([]string, 0, len(labels))
+	for _, label := range om.config.CustomMetrics.Metrics[name].Labels {
+		if value, ok := labels[label]; ok {
+			labelValues = append(labelValues, value)
+		} else {
+			labelValues = append(labelValues, "")
+		}
+	}
+
+	switch m := metric.(type) {
+	case *prometheus.CounterVec:
+		m.WithLabelValues(labelValues...).Add(value)
+	case *prometheus.GaugeVec:
+		m.WithLabelValues(labelValues...).Set(value)
+	case *prometheus.HistogramVec:
+		m.WithLabelValues(labelValues...).Observe(value)
+	case *prometheus.SummaryVec:
+		m.WithLabelValues(labelValues...).Observe(value)
+	default:
+		return fmt.Errorf("unsupported metric type for %s", name)
+	}
+
+	return nil
+}
+
+// GetMetricsHandler returns the Prometheus metrics handler
+func (om *ObservabilityManager) GetMetricsHandler() http.Handler {
+	return promhttp.Handler()
+}
+
+// GetHealthHandler returns the health check handler
+func (om *ObservabilityManager) GetHealthHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := om.tracer.Start(r.Context(), "observability.health_check")
+		defer span.End()
+
+		if !om.config.HealthChecks.Enabled {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+			return
+		}
+
+		healthy := true
+		results := make(map[string]string)
+
+		for name, check := range om.healthChecks {
+			if err := om.runHealthCheck(ctx, check); err != nil {
+				healthy = false
+				results[name] = fmt.Sprintf("FAIL: %s", err.Error())
+				span.RecordError(err)
+			} else {
+				results[name] = "OK"
+			}
+		}
+
+		if healthy {
+			w.WriteHeader(http.StatusOK)
+			span.SetAttributes(attribute.Bool("health.status", true))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			span.SetAttributes(attribute.Bool("health.status", false))
+		}
+
+		// Return JSON response with check results
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status": "%s", "checks": %v}`, 
+			map[bool]string{true: "healthy", false: "unhealthy"}[healthy], 
+			results)
+	}
+}
+
+// runHealthCheck runs a single health check
+func (om *ObservabilityManager) runHealthCheck(ctx context.Context, check *HealthCheck) error {
+	ctx, span := om.tracer.Start(ctx, "observability.run_health_check")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("health_check.name", check.Name),
+		attribute.String("health_check.type", check.Type),
+	)
+
+	switch check.Type {
+	case "http":
+		return om.runHTTPHealthCheck(ctx, check)
+	case "tcp":
+		return om.runTCPHealthCheck(ctx, check)
+	case "exec":
+		return om.runExecHealthCheck(ctx, check)
+	default:
+		return fmt.Errorf("unsupported health check type: %s", check.Type)
+	}
+}
+
+// runHTTPHealthCheck runs an HTTP health check
+func (om *ObservabilityManager) runHTTPHealthCheck(ctx context.Context, check *HealthCheck) error {
+	client := &http.Client{Timeout: check.Timeout}
+	resp, err := client.Get(check.Target)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+
+	return fmt.Errorf("HTTP health check failed with status: %d", resp.StatusCode)
+}
+
+// runTCPHealthCheck runs a TCP health check
+func (om *ObservabilityManager) runTCPHealthCheck(ctx context.Context, check *HealthCheck) error {
+	// Placeholder implementation
+	return nil
+}
+
+// runExecHealthCheck runs an exec health check
+func (om *ObservabilityManager) runExecHealthCheck(ctx context.Context, check *HealthCheck) error {
+	// Placeholder implementation
+	return nil
+}

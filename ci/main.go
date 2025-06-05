@@ -428,7 +428,7 @@ func release(ctx context.Context, client *dagger.Client, githubToken string) err
 		}).Sync(ctx)
 		if err != nil {
 			// Log warning instead of failing the build? Attestation might be best-effort initially.
-			fmt.Printf("Warning: failed to attest SBOM %s to %s: %w\n", sbomFileName, imageRef, err)
+			fmt.Printf("Warning: failed to attest SBOM %s to %s: %v\n", sbomFileName, imageRef, err)
 			// return fmt.Errorf("failed to attest SBOM %s to %s: %w", sbomFileName, imageRef, err)
 		} else {
 			fmt.Printf("  --> Successfully attested SBOM to %s\n", imageRef)
