@@ -206,7 +206,7 @@ func (om *ObservabilityManager) initializeOpenTelemetry() error {
 
 // initializeTracing initializes distributed tracing
 func (om *ObservabilityManager) initializeTracing(res *resource.Resource) error {
-	var exporter trace.SpanExporter
+	var exporter sdktrace.SpanExporter
 	var err error
 
 	switch om.config.Tracing.Backend {
