@@ -119,12 +119,13 @@ func ValidateGeneratedMixin(ctx context.Context, client *dagger.Client) error {
 		WithMountedCache("/go/build-cache", client.CacheVolume("go-build-validator")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithEnvVariable("GOCACHE", "/go/build-cache").
-		WithExec([]string{"apk", "add", "--no-cache", "git", "build-base"}) // Add git
+		WithExec([]string{"apt-get", "update"}).
+		WithExec([]string{"apt-get", "install", "-y", "git", "build-essential"}) // Add git and build tools
 
 	// Install validation tools (pin versions for consistency)
-	golangciVersion := "v1.59.1"   // Example pinned version
-	gosecVersion := "v2.19.0"      // Example pinned version
-	govulncheckVersion := "v1.1.1" // Example pinned version
+	golangciVersion := "v1.61.0"   // Updated pinned version
+	gosecVersion := "v2.21.4"      // Updated pinned version
+	govulncheckVersion := "v1.1.3" // Updated pinned version
 	validator = validator.
 		WithExec([]string{"go", "install", "github.com/golangci/golangci-lint/cmd/golangci-lint@" + golangciVersion}).
 		WithExec([]string{"go", "install", "github.com/securego/gosec/v2/cmd/gosec@" + gosecVersion}).
@@ -134,75 +135,158 @@ func ValidateGeneratedMixin(ctx context.Context, client *dagger.Client) error {
 	generatorBinary := builder.File(generatorPath)
 	validator = validator.WithMountedFile("/usr/local/bin/skeletor", generatorBinary)
 
-	// Generate a sample mixin inside the validator container
-	fmt.Println("--> Generating sample mixin for validation...")
-	generatedMixinPath := "/tmp/generated-mixin"
+	// Generate multiple sample mixins for comprehensive validation
+	fmt.Println("--> Generating sample mixins for validation...")
+
+	// Test 1: Basic mixin
+	basicMixinPath := "/tmp/basic-mixin"
 	validator = validator.WithExec([]string{
 		"skeletor", "create",
-		"--name", "validateme",
+		"--name", "basic-test",
 		"--author", "Dagger CI",
-		"--module", "example.com/dagger/validateme",
-		"--output", generatedMixinPath,
+		"--module", "example.com/dagger/basic-test",
+		"--output", basicMixinPath,
 		"--non-interactive",
-		"--compliance-level", "basic", // Or test multiple levels? Start with basic.
-		// Use the embedded/default template source implicitly if generator supports it,
-		// otherwise mount the templates dir and use --template-dir
-		// Assuming generator uses local templates dir if available:
-		// WithMountedDirectory("/src/templates", src.Directory("templates")).
-		// WithExec([]string{..., "--template-dir", "/src/templates"})
+		"--compliance-level", "basic",
 	})
 
-	// Run validation commands within the generated mixin directory
-	fmt.Println("--> Validating generated mixin code...")
-	validator = validator.WithWorkdir(generatedMixinPath)
+	// Test 2: Enterprise mixin with all features
+	enterpriseMixinPath := "/tmp/enterprise-mixin"
+	validator = validator.WithExec([]string{
+		"skeletor", "create",
+		"--name", "enterprise-test",
+		"--author", "Dagger CI",
+		"--module", "example.com/dagger/enterprise-test",
+		"--output", enterpriseMixinPath,
+		"--non-interactive",
+		"--compliance-level", "slsa-l3",
+		"--enable-security",
+		"--security-features", "input_validation,rate_limiting,secure_headers",
+		"--enable-compliance",
+		"--compliance-frameworks", "soc2,gdpr",
+		"--enable-auth",
+		"--auth-features", "rbac,sso",
+		"--enable-observability",
+		"--observability-features", "apm,opentelemetry,audit_logging",
+	})
+
+	// Test 3: Security-focused mixin
+	securityMixinPath := "/tmp/security-mixin"
+	validator = validator.WithExec([]string{
+		"skeletor", "create",
+		"--name", "security-test",
+		"--author", "Dagger CI",
+		"--module", "example.com/dagger/security-test",
+		"--output", securityMixinPath,
+		"--non-interactive",
+		"--enable-security",
+		"--security-features", "input_validation,rate_limiting,secure_headers,vulnerability_scanning,policy_enforcement",
+	})
+
+	// Validate all generated mixins
+	mixinPaths := []struct {
+		name string
+		path string
+	}{
+		{"basic-mixin", basicMixinPath},
+		{"enterprise-mixin", enterpriseMixinPath},
+		{"security-mixin", securityMixinPath},
+	}
+
+	for _, mixin := range mixinPaths {
+		fmt.Printf("--> Validating %s...\n", mixin.name)
+		if err := validateMixin(ctx, validator, mixin.path, mixin.name); err != nil {
+			return fmt.Errorf("validation failed for %s: %w", mixin.name, err)
+		}
+		fmt.Printf("--> %s validation successful!\n", mixin.name)
+	}
+
+	fmt.Println("--> All generated mixin validations successful!")
+	return nil
+}
+
+// validateMixin runs validation checks on a single generated mixin
+func validateMixin(ctx context.Context, validator *dagger.Container, mixinPath, mixinName string) error {
+	// Set working directory to the mixin
+	mixinValidator := validator.WithWorkdir(mixinPath)
 
 	// Go Mod Tidy
-	fmt.Println("  --> Running go mod tidy...")
-	_, err := validator.WithExec([]string{"go", "mod", "tidy"}).Sync(ctx)
+	fmt.Printf("  --> Running go mod tidy for %s...\n", mixinName)
+	_, err := mixinValidator.WithExec([]string{"go", "mod", "tidy"}).Sync(ctx)
 	if err != nil {
-		return fmt.Errorf("validation failed: go mod tidy: %w", err)
+		return fmt.Errorf("go mod tidy failed: %w", err)
 	}
 
 	// Go Build
-	fmt.Println("  --> Running go build ./...")
-	_, err = validator.WithExec([]string{"go", "build", "./..."}).Sync(ctx)
+	fmt.Printf("  --> Running go build ./... for %s...\n", mixinName)
+	_, err = mixinValidator.WithExec([]string{"go", "build", "./..."}).Sync(ctx)
 	if err != nil {
-		return fmt.Errorf("validation failed: go build: %w", err)
+		return fmt.Errorf("go build failed: %w", err)
 	}
 
 	// Go Test
-	fmt.Println("  --> Running go test ./...")
-	_, err = validator.WithExec([]string{"go", "test", "./..."}).Sync(ctx)
+	fmt.Printf("  --> Running go test ./... for %s...\n", mixinName)
+	_, err = mixinValidator.WithExec([]string{"go", "test", "./..."}).Sync(ctx)
 	if err != nil {
-		return fmt.Errorf("validation failed: go test: %w", err)
+		return fmt.Errorf("go test failed: %w", err)
 	}
 
 	// GolangCI-Lint
-	fmt.Println("  --> Running golangci-lint run ./...")
-	_, err = validator.WithExec([]string{"golangci-lint", "run", "./..."}).Sync(ctx)
+	fmt.Printf("  --> Running golangci-lint run ./... for %s...\n", mixinName)
+	_, err = mixinValidator.WithExec([]string{"golangci-lint", "run", "./..."}).Sync(ctx)
 	if err != nil {
-		return fmt.Errorf("validation failed: golangci-lint: %w", err)
+		return fmt.Errorf("golangci-lint failed: %w", err)
 	}
 
-	// Gosec
-	fmt.Println("  --> Running gosec ./...")
-	_, err = validator.WithExec([]string{"gosec", "./..."}).Sync(ctx)
+	// Gosec (warning only for now)
+	fmt.Printf("  --> Running gosec ./... for %s...\n", mixinName)
+	_, err = mixinValidator.WithExec([]string{"gosec", "./..."}).Sync(ctx)
 	if err != nil {
-		// Decide if gosec findings should fail the validation
-		fmt.Printf("Warning: gosec found issues: %v\n", err)
-		// return fmt.Errorf("validation failed: gosec: %w", err) // Uncomment to fail on gosec issues
+		fmt.Printf("Warning: gosec found issues in %s: %v\n", mixinName, err)
+		// Don't fail on gosec issues for now
 	}
 
-	// Govulncheck
-	fmt.Println("  --> Running govulncheck ./...")
-	_, err = validator.WithExec([]string{"govulncheck", "./..."}).Sync(ctx)
+	// Govulncheck (warning only for now)
+	fmt.Printf("  --> Running govulncheck ./... for %s...\n", mixinName)
+	_, err = mixinValidator.WithExec([]string{"govulncheck", "./..."}).Sync(ctx)
 	if err != nil {
-		// Decide if govulncheck findings should fail the validation
-		fmt.Printf("Warning: govulncheck found issues: %v\n", err)
-		// return fmt.Errorf("validation failed: govulncheck: %w", err) // Uncomment to fail on vulnerabilities
+		fmt.Printf("Warning: govulncheck found issues in %s: %v\n", mixinName, err)
+		// Don't fail on vulnerability issues for now
 	}
 
-	fmt.Println("--> Generated mixin validation successful!")
+	// Verify enterprise feature files exist (for enterprise and security mixins)
+	if mixinName == "enterprise-mixin" || mixinName == "security-mixin" {
+		fmt.Printf("  --> Verifying enterprise feature files for %s...\n", mixinName)
+
+		// Check for security files
+		if mixinName == "enterprise-mixin" || mixinName == "security-mixin" {
+			_, err = mixinValidator.WithExec([]string{"test", "-f", "pkg/security/security.go"}).Sync(ctx)
+			if err != nil {
+				return fmt.Errorf("security feature files missing: %w", err)
+			}
+			_, err = mixinValidator.WithExec([]string{"test", "-f", "configs/security.yaml"}).Sync(ctx)
+			if err != nil {
+				return fmt.Errorf("security config file missing: %w", err)
+			}
+		}
+
+		// Check for enterprise-specific files
+		if mixinName == "enterprise-mixin" {
+			_, err = mixinValidator.WithExec([]string{"test", "-f", "pkg/compliance/compliance.go"}).Sync(ctx)
+			if err != nil {
+				return fmt.Errorf("compliance feature files missing: %w", err)
+			}
+			_, err = mixinValidator.WithExec([]string{"test", "-f", "pkg/auth/rbac.go"}).Sync(ctx)
+			if err != nil {
+				return fmt.Errorf("auth feature files missing: %w", err)
+			}
+			_, err = mixinValidator.WithExec([]string{"test", "-f", "pkg/observability/observability.go"}).Sync(ctx)
+			if err != nil {
+				return fmt.Errorf("observability feature files missing: %w", err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -221,9 +305,9 @@ func test(ctx context.Context, client *dagger.Client) error {
 
 	// Install tools
 	// Define pinned versions
-	gosecVersion := "v2.19.0"      // Example pinned version
-	govulncheckVersion := "v1.1.1" // Example pinned version
-	mageVersion := "v1.15.0"       // Example pinned version
+	gosecVersion := "v2.21.4"      // Updated pinned version
+	govulncheckVersion := "v1.1.3" // Updated pinned version
+	mageVersion := "v1.15.0"       // Current pinned version
 
 	golang = golang.
 		WithExec([]string{"go", "install", "github.com/securego/gosec/v2/cmd/gosec@" + gosecVersion}).
@@ -304,18 +388,19 @@ func release(ctx context.Context, client *dagger.Client, githubToken string) err
 							WithEnvVariable("GOCACHE", "/go/build-cache").
 							WithWorkdir("/src").
 							WithMountedDirectory("/src", src).
-							WithExec([]string{"apk", "add", "--no-cache", "git", "build-base"}) // Ensure git is present
+							WithExec([]string{"apt-get", "update"}).
+							WithExec([]string{"apt-get", "install", "-y", "git", "build-essential"}) // Ensure git is present
 
 	// Define pinned versions within function scope
-	goreleaserVersion := "v2.1.0" // Example pinned version
-	cosignVersion := "v2.2.4"     // Example pinned version
-	syftVersion := "v1.10.0"      // Example pinned syft version
+	goreleaserVersion := "v2.4.1" // Updated pinned version
+	cosignVersion := "v2.4.1"     // Updated pinned version
+	syftVersion := "v1.16.0"      // Updated pinned syft version
 
 	// Install GoReleaser, Cosign, Syft
 	releaserTools := goreleaser.
 		WithExec([]string{"go", "install", "github.com/goreleaser/goreleaser@" + goreleaserVersion}).
 		WithExec([]string{"go", "install", "github.com/sigstore/cosign/v2/cmd/cosign@" + cosignVersion}).
-		WithExec([]string{"apk", "add", "--no-cache", "syft=" + syftVersion}) // Assuming syft is available via apk, adjust if needed
+		WithExec([]string{"go", "install", "github.com/anchore/syft/cmd/syft@" + syftVersion}) // Install syft via go install
 
 	// Run GoReleaser release command
 	// Pass GITHUB_TOKEN as a secret
@@ -341,8 +426,8 @@ func release(ctx context.Context, client *dagger.Client, githubToken string) err
 
 	// Define platforms
 	platforms := []string{"linux/amd64", "linux/arm64"}
-	imageRepo := "ghcr.io/getporter/skeletor" // Define image repo base
-	gitTag := os.Getenv("GITHUB_REF_NAME")    // Assumes GITHUB_REF_NAME is set (e.g., v1.2.3)
+	imageRepo := "ghcr.io/mchorfa/porter-skeletor" // Define image repo base
+	gitTag := os.Getenv("GITHUB_REF_NAME")         // Assumes GITHUB_REF_NAME is set (e.g., v1.2.3)
 	if gitTag == "" {
 		return fmt.Errorf("GITHUB_REF_NAME environment variable not set, cannot determine image tag")
 	}
