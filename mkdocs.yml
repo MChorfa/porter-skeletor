@@ -1,15 +1,13 @@
 # MkDocs configuration for the Porter Mixin Generator documentation site.
 site_name: Porter Mixin Generator (Skeletor)
 site_description: Enterprise-grade command-line tool for generating Porter mixins with built-in security, compliance, authentication, and observability features.
-site_url: https://getporter.github.io/skeletor/
-repo_url: https://github.com/getporter/skeletor/
-repo_name: getporter/skeletor
+site_url: https://mchorfa.github.io/porter-skeletor/
+repo_url: https://github.com/MChorfa/porter-skeletor/
+repo_name: MChorfa/porter-skeletor
 edit_uri: edit/main/docs/
 
 theme:
   name: material
-  logo: assets/logo.png
-  favicon: assets/favicon.ico
   palette:
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
@@ -50,30 +48,12 @@ nav:
   - Home: index.md
   - Getting Started:
     - Installation: installation.md
-    - Quick Start: quick-start.md
-    - Basic Usage: basic-usage.md
   - Enterprise Features:
     - Overview: enterprise-features.md
-    - Security Features: security-features.md
-    - Compliance Frameworks: compliance-frameworks.md
-    - Authentication & Authorization: auth-features.md
-    - Enhanced Observability: observability-features.md
   - Reference:
     - Command Reference: command-reference.md
-    - Template Variables: template-variables.md
-    - Configuration Files: configuration-files.md
-  - Advanced:
-    - Template Customization: template-customization.md
-    - Custom Templates: custom-templates.md
-    - CI/CD Integration: cicd-integration.md
-  - Examples:
-    - Basic Examples: examples.md
-    - Enterprise Examples: enterprise-examples.md
-    - Real-world Use Cases: use-cases.md
-  - Contributing:
-    - Contributing Guide: contributing.md
-    - Development Setup: development.md
-    - Release Process: release-process.md
+  - Examples: examples.md
+  - CLI Help: cli-help.md
 
 # Markdown extensions
 markdown_extensions:

@@ -36,7 +36,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23'
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -68,46 +68,26 @@ jobs:
           # Ensure docs directory exists
           mkdir -p docs
 
-          # Copy README as index if docs/index.md doesn't exist
-          if [ ! -f docs/index.md ]; then
-            cp README.md docs/index.md
-          fi
-
-          # Copy other documentation files if they exist
-          if [ -f CONTRIBUTING.md ]; then
-            cp CONTRIBUTING.md docs/contributing.md
-          fi
-
-          if [ -f SECURITY.md ]; then
-            cp SECURITY.md docs/security.md
-          fi
-
           # Generate CLI help documentation
-          if [ -f ./skeletor ] && [ -x ./skeletor ]; then
-            echo "# CLI Help" > docs/cli-help.md
-            echo "" >> docs/cli-help.md
-            echo "## Skeletor Help" >> docs/cli-help.md
-            echo "" >> docs/cli-help.md
-            echo '```' >> docs/cli-help.md
-            ./skeletor --help >> docs/cli-help.md 2>/dev/null || echo "Error generating help" >> docs/cli-help.md
-            echo '```' >> docs/cli-help.md
-            echo "" >> docs/cli-help.md
-            echo "## Create Command Help" >> docs/cli-help.md
-            echo "" >> docs/cli-help.md
-            echo '```' >> docs/cli-help.md
-            ./skeletor create --help >> docs/cli-help.md 2>/dev/null || echo "Error generating create help" >> docs/cli-help.md
-            echo '```' >> docs/cli-help.md
-            echo "" >> docs/cli-help.md
-            echo "## Version Information" >> docs/cli-help.md
-            echo "" >> docs/cli-help.md
-            echo '```' >> docs/cli-help.md
-            ./skeletor version >> docs/cli-help.md 2>/dev/null || echo "Error generating version info" >> docs/cli-help.md
-            echo '```' >> docs/cli-help.md
-          else
-            echo "# CLI Help" > docs/cli-help.md
-            echo "" >> docs/cli-help.md
-            echo "CLI help documentation will be generated when the binary is available." >> docs/cli-help.md
-          fi
+          echo "# CLI Help" > docs/cli-help.md
+          echo "" >> docs/cli-help.md
+          echo "## Skeletor Help" >> docs/cli-help.md
+          echo "" >> docs/cli-help.md
+          echo '```' >> docs/cli-help.md
+          ./skeletor --help >> docs/cli-help.md 2>&1 || echo "Help generation failed" >> docs/cli-help.md
+          echo '```' >> docs/cli-help.md
+          echo "" >> docs/cli-help.md
+          echo "## Create Command Help" >> docs/cli-help.md
+          echo "" >> docs/cli-help.md
+          echo '```' >> docs/cli-help.md
+          ./skeletor create --help >> docs/cli-help.md 2>&1 || echo "Create help generation failed" >> docs/cli-help.md
+          echo '```' >> docs/cli-help.md
+          echo "" >> docs/cli-help.md
+          echo "## Version Information" >> docs/cli-help.md
+          echo "" >> docs/cli-help.md
+          echo '```' >> docs/cli-help.md
+          ./skeletor version >> docs/cli-help.md 2>&1 || echo "Version generation failed" >> docs/cli-help.md
+          echo '```' >> docs/cli-help.md
 
       # --- Build and Deploy ---
       - name: Build MkDocs site
