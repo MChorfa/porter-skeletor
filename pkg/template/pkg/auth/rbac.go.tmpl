@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"get.porter.sh/porter/pkg/tracing"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -120,7 +120,7 @@ type RBACManager struct {
 func NewRBACManager(config *RBACConfig) *RBACManager {
 	return &RBACManager{
 		config: config,
-		tracer: tracing.Tracer("{{ .ModulePath }}/auth/rbac"),
+		tracer: otel.Tracer("{{ .ModulePath }}/auth/rbac"),
 	}
 }
 

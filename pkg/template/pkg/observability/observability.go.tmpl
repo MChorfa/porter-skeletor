@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"time"
 
-	"get.porter.sh/porter/pkg/tracing"
+	""
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
-	promexporter "go.opentelemetry.io/otel/exporters/prometheus"
+	promexporter "	promexporter "go.opentelemetry.io/otel/exporters/prometheus""
 	"go.opentelemetry.io/otel/metric"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	sdkmetric "	sdkmetric "go.opentelemetry.io/otel/sdk/metric""
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
@@ -199,7 +199,7 @@ func (om *ObservabilityManager) initializeOpenTelemetry() error {
 		return fmt.Errorf("failed to initialize metrics: %w", err)
 	}
 
-	om.tracer = tracing.Tracer("{{ .ModulePath }}/observability")
+	om.tracer = otel.Tracer("{{ .ModulePath }}/observability")
 	om.meter = otel.Meter("{{ .ModulePath }}/observability")
 
 	return nil

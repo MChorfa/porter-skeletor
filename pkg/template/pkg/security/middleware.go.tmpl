@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"get.porter.sh/porter/pkg/tracing"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -22,7 +22,7 @@ type SecurityMiddleware struct {
 func NewSecurityMiddleware(manager *SecurityManager) *SecurityMiddleware {
 	return &SecurityMiddleware{
 		manager: manager,
-		tracer:  tracing.Tracer("{{ .ModulePath }}/security"),
+		tracer:  otel.Tracer("{{ .ModulePath }}/security"),
 	}
 }
 
