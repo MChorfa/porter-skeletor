@@ -33,6 +33,11 @@ jobs:
         with:
           fetch-depth: 0 # Fetch all history for git info used by mkdocs-material
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -50,6 +55,12 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install mkdocs mkdocs-material mkdocs-git-revision-date-localized-plugin mkdocs-git-committers-plugin-2
+
+      - name: Build Skeletor binary
+        run: |
+          go mod tidy
+          go build -o skeletor ./cmd/skeletor
+          chmod +x skeletor
 
       # --- Prepare Documentation Source ---
       - name: Prepare documentation files
@@ -72,18 +83,30 @@ jobs:
           fi
 
           # Generate CLI help documentation
-          if [ -f ./skeletor ]; then
+          if [ -f ./skeletor ] && [ -x ./skeletor ]; then
             echo "# CLI Help" > docs/cli-help.md
             echo "" >> docs/cli-help.md
+            echo "## Skeletor Help" >> docs/cli-help.md
+            echo "" >> docs/cli-help.md
             echo '```' >> docs/cli-help.md
-            ./skeletor --help >> docs/cli-help.md
+            ./skeletor --help >> docs/cli-help.md 2>/dev/null || echo "Error generating help" >> docs/cli-help.md
             echo '```' >> docs/cli-help.md
             echo "" >> docs/cli-help.md
             echo "## Create Command Help" >> docs/cli-help.md
             echo "" >> docs/cli-help.md
             echo '```' >> docs/cli-help.md
-            ./skeletor create --help >> docs/cli-help.md
+            ./skeletor create --help >> docs/cli-help.md 2>/dev/null || echo "Error generating create help" >> docs/cli-help.md
             echo '```' >> docs/cli-help.md
+            echo "" >> docs/cli-help.md
+            echo "## Version Information" >> docs/cli-help.md
+            echo "" >> docs/cli-help.md
+            echo '```' >> docs/cli-help.md
+            ./skeletor version >> docs/cli-help.md 2>/dev/null || echo "Error generating version info" >> docs/cli-help.md
+            echo '```' >> docs/cli-help.md
+          else
+            echo "# CLI Help" > docs/cli-help.md
+            echo "" >> docs/cli-help.md
+            echo "CLI help documentation will be generated when the binary is available." >> docs/cli-help.md
           fi
 
       # --- Build and Deploy ---
